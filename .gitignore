@@ -1,27 +1,53 @@
-# Dependencies
-node_modules/
+# Environment (NEVER commit .env with real keys)
+.env
+
+# ── Python / Backend ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[oc]
+*.pyc
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+.coverage.*
+.ruff_cache
+agent_history.gif
+static/browser_history/*.gif
+log/
+log/*
+.venv
+venv/
+.python-version
 backend/.venv/
 backend/__pycache__/
 backend/packages/**/__pycache__/
 backend/.langgraph_api/
 backend/.deer-flow/
+backend/uv.lock
 
-# Build outputs
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+frontend/node_modules/
 frontend/.next/
 frontend/out/
+frontend/pnpm-lock.yaml
+frontend/.pnp
+frontend/.pnp.js
+frontend/tsconfig.tsbuildinfo
+frontend/.DS_Store
 
-# Environment (NEVER commit .env with real keys)
-.env
+# ── Build outputs ────────────────────────────────────────────────────────────
+outputs/
+*.pptx
 
-# IDE
+# ── IDE ─────────────────────────────────────────────────────────────────────
 .DS_Store
-
 *.swp
 *.swo
 .vscode/
 
-# Logs
-*.log
-
-# OS
+# ── OS ───────────────────────────────────────────────────────────────────────
 Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log

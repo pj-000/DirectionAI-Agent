@@ -1,0 +1,115 @@
+# DirectionAI Agent - Production Environment
+# Based on DeerFlow v2 framework with PPT generation integration
+#
+# Services:
+#   - nginx:       Reverse proxy (port 2026)
+#   - frontend:    Next.js production server
+#   - gateway:     FastAPI Gateway API
+#   - langgraph:   LangGraph production server
+#   - pptagent:    PPT generation service
+#
+# Usage:
+#   docker compose up -d
+#
+# Environment variables (set in .env):
+#   MINIMAX_API_KEY     - MiniMax API key
+#   ANTHROPIC_API_KEY  - Anthropic API key
+#   BETTER_AUTH_SECRET  - Required for frontend auth
+
+services:
+  # ── Reverse Proxy ──────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: directionai-nginx
+    ports:
+      - "${PORT:-2026}:2026"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - gateway
+      - langgraph
+      - pptagent
+    networks:
+      - directionai
+    restart: unless-stopped
+
+  # ── Frontend: Next.js Production ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+    container_name: directionai-frontend
+    environment:
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
+      - DEER_FLOW_INTERNAL_LANGGRAPH_BASE_URL=http://langgraph:2024
+    env_file:
+      - ./frontend/.env
+    networks:
+      - directionai
+    restart: unless-stopped
+
+  # ── Gateway API ───────────────────────────────────────────────────────────
+  gateway:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: directionai-gateway
+    command: >
+      sh -c "
+        cd backend &&
+        PYTHONPATH=. uv run uvicorn app.gateway.app:app
+        --host 0.0.0.0 --port 8001 --workers 2
+      "
+    environment:
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./config.yaml:/app/backend/config.yaml:ro
+      - ./skills:/mnt/skills:ro
+      - ./outputs:/mnt/user-data/outputs
+      - ${DEER_FLOW_HOME:-./.deer-flow}:/app/backend/.deer-flow
+    networks:
+      - directionai
+    restart: unless-stopped
+
+  # ── LangGraph Server ─────────────────────────────────────────────────────
+  langgraph:
+    image: langgraph/langgraph-api:latest
+    container_name: directionai-langgraph
+    environment:
+      - LANGGRAPH_API_KEY=${LANGGRAPH_API_KEY:-}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./skills:/mnt/skills:ro
+      - ./outputs:/mnt/user-data/outputs
+      - ${DEER_FLOW_HOME:-./.deer-flow}:/app/.deer-flow
+    networks:
+      - directionai
+    restart: unless-stopped
+
+  # ── PPT Generation Service ────────────────────────────────────────────────
+  pptagent:
+    build:
+      context: ./pptagent
+      dockerfile: Dockerfile
+    container_name: directionai-pptagent
+    environment:
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Image generation settings
+      - IMAGE_GENERATION_PROVIDER=${IMAGE_GENERATION_PROVIDER:-doubao}
+      - DOUBAO_API_KEY=${DOUBAO_API_KEY:-}
+    volumes:
+      - ./pptagent/outputs:/app/outputs
+    networks:
+      - directionai
+    restart: unless-stopped
+
+networks:
+  directionai:
+    name: directionai-network

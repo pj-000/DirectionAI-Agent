@@ -1,0 +1,182 @@
+# DirectionAI Agent Configuration
+# Based on DeerFlow v2 framework
+# ============================================================================
+# Config Version
+# ============================================================================
+config_version: 4
+
+# ============================================================================
+# Logging
+# ============================================================================
+log_level: info
+
+# ============================================================================
+# Token Usage Tracking
+# ============================================================================
+token_usage:
+  enabled: false
+
+# ============================================================================
+# Models Configuration
+# ============================================================================
+models:
+  # MiniMax - Primary model for PPT generation
+  - name: minimax-m2.7
+    display_name: MiniMax M2.7
+    use: langchain_openai:ChatOpenAI
+    model: MiniMax-M2.7
+    api_key: $MINIMAX_API_KEY
+    base_url: https://api.minimaxi.com/v1
+    request_timeout: 600.0
+    max_retries: 2
+    max_tokens: 8192
+    temperature: 1.0
+    supports_vision: true
+    supports_thinking: true
+    when_thinking_enabled:
+      thinking:
+        type: enabled
+
+  # Claude - For complex reasoning tasks
+  - name: claude-sonnet-4.6
+    display_name: Claude Sonnet 4.6
+    use: langchain_anthropic:ChatAnthropic
+    model: claude-sonnet-4-20250514
+    api_key: $ANTHROPIC_API_KEY
+    default_request_timeout: 600.0
+    max_retries: 2
+    max_tokens: 8192
+    supports_vision: true
+    supports_thinking: true
+    when_thinking_enabled:
+      thinking:
+        type: enabled
+
+# ============================================================================
+# Tool Groups Configuration
+# ============================================================================
+tool_groups:
+  - name: web
+  - name: file:read
+  - name: file:write
+  - name: bash
+  - name: education
+
+# ============================================================================
+# Tools Configuration
+# ============================================================================
+tools:
+  # Web search
+  - name: web_search
+    group: web
+    use: deerflow.community.ddg_search.tools:web_search_tool
+    max_results: 5
+
+  # Web fetch
+  - name: web_fetch
+    group: web
+    use: deerflow.community.jina_ai.tools:web_fetch_tool
+    timeout: 10
+
+  # File operations
+  - name: ls
+    group: file:read
+    use: deerflow.sandbox.tools:ls_tool
+
+  - name: read_file
+    group: file:read
+    use: deerflow.sandbox.tools:read_file_tool
+
+  - name: write_file
+    group: file:write
+    use: deerflow.sandbox.tools:write_file_tool
+
+  - name: str_replace
+    group: file:write
+    use: deerflow.sandbox.tools:str_replace_tool
+
+  # Bash execution
+  - name: bash
+    group: bash
+    use: deerflow.sandbox.tools:bash_tool
+
+  # DirectionAI Education Tools
+  - name: generate_ppt
+    group: education
+    use: deerflow.directionai.tools:generate_ppt_tool
+
+  - name: generate_lesson_plan
+    group: education
+    use: deerflow.directionai.tools:generate_lesson_plan_tool
+
+  - name: generate_exam
+    group: education
+    use: deerflow.directionai.tools:generate_exam_tool
+
+  - name: evaluate_ppt
+    group: education
+    use: deerflow.directionai.tools:evaluate_ppt_tool
+
+# ============================================================================
+# Tool Search Configuration
+# ============================================================================
+tool_search:
+  enabled: false
+
+# ============================================================================
+# Sandbox Configuration
+# ============================================================================
+sandbox:
+  use: deerflow.sandbox.local:LocalSandboxProvider
+  allow_host_bash: false
+
+# ============================================================================
+# Skills Configuration
+# ============================================================================
+skills:
+  path: ./skills
+  container_path: /mnt/skills
+
+# ============================================================================
+# Title Generation
+# ============================================================================
+title:
+  enabled: true
+  max_words: 6
+  max_chars: 60
+  model_name: null
+
+# ============================================================================
+# Summarization
+# ============================================================================
+summarization:
+  enabled: true
+  model_name: null
+  trigger:
+    - type: tokens
+      value: 15564
+  keep:
+    type: messages
+    value: 10
+  trim_tokens_to_summarize: 15564
+  summary_prompt: null
+
+# ============================================================================
+# Memory
+# ============================================================================
+memory:
+  enabled: true
+  storage_path: memory.json
+  debounce_seconds: 30
+  model_name: null
+  max_facts: 100
+  fact_confidence_threshold: 0.7
+  injection_enabled: true
+  max_injection_tokens: 2000
+
+# ============================================================================
+# Checkpointer
+# ============================================================================
+checkpointer:
+  type: sqlite
+  connection_string: checkpoints.db

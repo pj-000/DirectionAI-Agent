@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+backend/.venv/
+backend/__pycache__/
+backend/packages/**/__pycache__/
+backend/.langgraph_api/
+backend/.deer-flow/
+
+# Build outputs
+frontend/.next/
+frontend/out/
+
+# Environment (NEVER commit .env with real keys)
+.env
+
+# IDE
+.DS_Store
+
+*.swp
+*.swo
+.vscode/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db

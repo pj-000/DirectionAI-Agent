@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Callable
 from openai import AsyncOpenAI
 from tavily import AsyncTavilyClient
-from models.schemas import SlideSpec, SlideLayout, TextElement
-from tools.openai_compat import async_stream_chat_completion_text, build_chat_completion_kwargs
-import config
+from ..models.schemas import SlideSpec, SlideLayout, TextElement
+from ..tools.openai_compat import async_stream_chat_completion_text, build_chat_completion_kwargs
+from ..tools.pptx_skill import PROJECT_ROOT
+from .. import config
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class ResearchAgent:
         self.client = self.llm
         self.last_reasoning = ""
         self.thinking_callback = thinking_callback
-        self._system_template = Path("prompts/researcher_system.txt").read_text(encoding="utf-8")
+        self._system_template = (PROJECT_ROOT / "prompts" / "researcher_system.txt").read_text(encoding="utf-8")
 
     def _handle_reasoning_chunk(self, chunk: str) -> None:
         if not chunk:

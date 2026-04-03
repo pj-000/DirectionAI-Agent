@@ -20,14 +20,14 @@ token_usage:
 # Models Configuration
 # ============================================================================
 models:
-  # MiniMax - Primary model for PPT generation
+  # MiniMax - Primary model for PPT generation (Anthropic API compatible)
   - name: minimax-m2.7
     display_name: MiniMax M2.7
-    use: langchain_openai:ChatOpenAI
+    use: langchain_anthropic:ChatAnthropic
     model: MiniMax-M2.7
     api_key: $MINIMAX_API_KEY
-    base_url: https://api.minimaxi.com/v1
-    request_timeout: 600.0
+    anthropic_api_url: https://api.minimaxi.com/anthropic
+    default_request_timeout: 600.0
     max_retries: 2
     max_tokens: 8192
     temperature: 1.0

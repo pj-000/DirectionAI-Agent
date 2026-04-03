@@ -4,7 +4,6 @@ import {
   ChevronUp,
   FolderOpenIcon,
   GlobeIcon,
-  LightbulbIcon,
   ListTodoIcon,
   MessageCircleQuestionMarkIcon,
   NotebookPenIcon,
@@ -38,6 +37,7 @@ import { FlipDisplay } from "../flip-display";
 import { Tooltip } from "../tooltip";
 
 import { MarkdownContent } from "./markdown-content";
+import { PPTStreamingInline } from "./ppt-streaming-inline";
 
 export function MessageGroup({
   className,
@@ -52,10 +52,29 @@ export function MessageGroup({
   const [showAbove, setShowAbove] = useState(
     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true",
   );
-  const [showLastThinking, setShowLastThinking] = useState(
-    env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true",
-  );
   const steps = useMemo(() => convertToSteps(messages), [messages]);
+  // Scan all messages for generate_ppt streaming marker
+  const pptgenParams = useMemo(() => {
+    for (const msg of messages) {
+      if (msg.type === "tool") {
+        const content =
+          typeof msg.content === "string"
+            ? msg.content
+            : (msg.content as Array<{type: string; text?: string}>)
+                .map((c) => c.text ?? "")
+                .join("\n");
+        const match = content.match(/__PPTGEN_START__(.+?)__PPTGEN_END__/s);
+        if (match?.[1]) {
+          try {
+            return JSON.parse(match[1]!);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+    return null;
+  }, [messages]);
   const lastToolCallStep = useMemo(() => {
     const filteredSteps = steps.filter((step) => step.type === "toolCall");
     return filteredSteps[filteredSteps.length - 1];
@@ -66,15 +85,6 @@ export function MessageGroup({
       return steps.slice(0, index);
     }
     return [];
-  }, [lastToolCallStep, steps]);
-  const lastReasoningStep = useMemo(() => {
-    if (lastToolCallStep) {
-      const index = steps.indexOf(lastToolCallStep);
-      return steps.slice(index + 1).find((step) => step.type === "reasoning");
-    } else {
-      const filteredSteps = steps.filter((step) => step.type === "reasoning");
-      return filteredSteps[filteredSteps.length - 1];
-    }
   }, [lastToolCallStep, steps]);
   const rehypePlugins = useRehypeSplitWordsIntoSpans(isLoading);
   return (
@@ -139,45 +149,10 @@ export function MessageGroup({
           )}
         </ChainOfThoughtContent>
       )}
-      {lastReasoningStep && (
-        <>
-          <Button
-            key={lastReasoningStep.id}
-            className="w-full items-start justify-start text-left"
-            variant="ghost"
-            onClick={() => setShowLastThinking(!showLastThinking)}
-          >
-            <div className="flex w-full items-center justify-between">
-              <ChainOfThoughtStep
-                className="font-normal"
-                label={t.common.thinking}
-                icon={LightbulbIcon}
-              ></ChainOfThoughtStep>
-              <div>
-                <ChevronUp
-                  className={cn(
-                    "text-muted-foreground size-4",
-                    showLastThinking ? "" : "rotate-180",
-                  )}
-                />
-              </div>
-            </div>
-          </Button>
-          {showLastThinking && (
-            <ChainOfThoughtContent className="px-4 pb-2">
-              <ChainOfThoughtStep
-                key={lastReasoningStep.id}
-                label={
-                  <MarkdownContent
-                    content={lastReasoningStep.reasoning ?? ""}
-                    isLoading={isLoading}
-                    rehypePlugins={rehypePlugins}
-                  />
-                }
-              ></ChainOfThoughtStep>
-            </ChainOfThoughtContent>
-          )}
-        </>
+      {pptgenParams && (
+        <ChainOfThoughtContent className="px-4 pb-2">
+          <PPTStreamingInline params={pptgenParams} />
+        </ChainOfThoughtContent>
       )}
     </ChainOfThought>
   );
@@ -408,6 +383,25 @@ function ToolCall({
         label={t.toolCalls.writeTodos}
         icon={ListTodoIcon}
       ></ChainOfThoughtStep>
+    );
+  } else if (name === "generate_ppt") {
+    // Tool result contains __PPTGEN_START__{...params...}__PPTGEN_END__
+    const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+    const markerMatch = resultStr?.match(/__PPTGEN_START__(.+?)__PPTGEN_END__/s);
+    if (markerMatch?.[1]) {
+      try {
+        const pptParams = JSON.parse(markerMatch[1]!);
+        return (
+          <ChainOfThoughtStep key={id} label={t.toolCalls.useTool(name)} icon={WrenchIcon}>
+            <PPTStreamingInline params={pptParams} />
+          </ChainOfThoughtStep>
+        );
+      } catch {
+        // fall through to default
+      }
+    }
+    return (
+      <ChainOfThoughtStep key={id} label={t.toolCalls.useTool(name)} icon={WrenchIcon}></ChainOfThoughtStep>
     );
   } else {
     const description: string | undefined = (args as { description: string })

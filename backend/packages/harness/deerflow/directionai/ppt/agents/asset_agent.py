@@ -16,8 +16,8 @@ import httpx
 from openai import AsyncOpenAI
 from tavily import AsyncTavilyClient
 
-import config
-from models.schemas import SlideLayout, SlideOutline, VisualMode, resolve_visual_mode
+from .. import config
+from ..models.schemas import SlideLayout, SlideOutline, VisualMode, resolve_visual_mode
 
 logger = logging.getLogger(__name__)
 

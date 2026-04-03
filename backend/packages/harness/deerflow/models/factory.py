@@ -45,19 +45,32 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     if model_config.thinking is not None:
         merged_thinking = {**(effective_wte.get("thinking") or {}), **model_config.thinking}
         effective_wte = {**effective_wte, "thinking": merged_thinking}
+    # Check if this is a non-Claude model (uses langchain_openai instead of langchain_anthropic)
+    # Claude's Responses API supports `thinking` directly; OpenAI-compatible models do NOT.
+    # For langchain_openai (MiniMax, etc.), thinking must go in extra_body or be skipped.
+    _is_anthropic_model = model_class.__module__.startswith("langchain_anthropic")
+
     if thinking_enabled and has_thinking_settings:
         if not model_config.supports_thinking:
             raise ValueError(f"Model {name} does not support thinking. Set `supports_thinking` to true in the `config.yaml` to enable thinking.") from None
         if effective_wte:
-            model_settings_from_config.update(effective_wte)
+            if _is_anthropic_model:
+                # Claude: pass thinking as a native constructor parameter
+                model_settings_from_config.update(effective_wte)
+            else:
+                # OpenAI-compatible (MiniMax, etc.): put thinking inside extra_body
+                extra_body_thinking = effective_wte.get("thinking") or effective_wte
+                existing_extra_body = model_settings_from_config.get("extra_body", {})
+                model_settings_from_config["extra_body"] = {**existing_extra_body, **extra_body_thinking}
     if not thinking_enabled and has_thinking_settings:
-        if effective_wte.get("extra_body", {}).get("thinking", {}).get("type"):
-            # OpenAI-compatible gateway: thinking is nested under extra_body
-            kwargs.update({"extra_body": {"thinking": {"type": "disabled"}}})
-            kwargs.update({"reasoning_effort": "minimal"})
-        elif effective_wte.get("thinking", {}).get("type"):
-            # Native langchain_anthropic: thinking is a direct constructor parameter
+        if _is_anthropic_model:
             kwargs.update({"thinking": {"type": "disabled"}})
+        else:
+            # OpenAI-compatible: disable via extra_body
+            existing_extra_body = model_settings_from_config.get("extra_body", {})
+            model_settings_from_config["extra_body"] = {**existing_extra_body, "thinking": {"type": "disabled"}}
+            if "reasoning_effort" not in kwargs:
+                kwargs["reasoning_effort"] = "minimal"
     if not model_config.supports_reasoning_effort and "reasoning_effort" in kwargs:
         del kwargs["reasoning_effort"]
 

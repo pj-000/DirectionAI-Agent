@@ -13,8 +13,8 @@ from pathlib import Path
 
 from openai import OpenAI
 
-import config
-from models.schemas import OutlinePlan, SlideEvalResult
+from .. import config
+from ..models.schemas import OutlinePlan, SlideEvalResult
 
 logger = logging.getLogger(__name__)
 

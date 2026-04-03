@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { CopyButton } from "../copy-button";
 
 import { MarkdownContent } from "./markdown-content";
+import { PPTStreamingInline } from "./ppt-streaming-inline";
 
 export function MessageListItem({
   className,
@@ -202,6 +203,42 @@ function MessageContent_({
           </AIElementMessageContent>
         )}
       </div>
+    );
+  }
+
+  // Detect PPT generation marker: __PPTGEN_START__{...params...}__PPTGEN_END__
+  const PPTGEN_MARKER = "__PPTGEN_START__";
+  const pptgenMatch = !isHuman && rawContent?.includes(PPTGEN_MARKER)
+    ? rawContent.match(/__PPTGEN_START__(.+?)__PPTGEN_END__/s)
+    : null;
+  if (pptgenMatch?.[1]) {
+    let pptParams: Record<string, string | number | boolean> = {};
+    try {
+      pptParams = JSON.parse(pptgenMatch[1]!);
+    } catch {
+      // ignore parse errors
+    }
+    // Strip the marker block from displayed content, keep the rest
+    const afterMarker = rawContent
+      .replace(/__PPTGEN_START__.+?__PPTGEN_END__\n\n/s, "")
+      .trim();
+    return (
+      <AIElementMessageContent className={className}>
+        {filesList}
+        {Object.keys(pptParams).length > 0 && (
+          <div className="my-3">
+            <PPTStreamingInline params={pptParams} />
+          </div>
+        )}
+        {afterMarker && (
+          <MarkdownContent
+            content={afterMarker}
+            isLoading={false}
+            rehypePlugins={[]}
+            className="my-3"
+          />
+        )}
+      </AIElementMessageContent>
     );
   }
 

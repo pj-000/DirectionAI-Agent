@@ -14,6 +14,7 @@ ARG UV_INDEX_URL
 RUN if [ -n "${APT_MIRROR}" ]; then \
       sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
       sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list 2>/dev/null || true; \
+      sed -i "s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
     fi
 
 # Install system dependencies + Node.js (provides npx for MCP servers)
@@ -22,11 +23,14 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     gnupg \
     ca-certificates \
+    libreoffice-impress \
+    poppler-utils \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update \
     && apt-get install -y nodejs \
+    && npm install -g pptxgenjs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI (for DooD: allows starting sandbox containers via host Docker socket)
@@ -41,9 +45,8 @@ WORKDIR /app
 # Copy frontend source code
 COPY . ./backend
 
-# Install dependencies with cache mount
-RUN --mount=type=cache,target=/root/.cache/uv \
-    sh -c "UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} uv sync"
+# Install dependencies
+RUN UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} uv sync || pip install -r backend/requirements.txt || true
 
 # Expose ports (gateway: 8001, langgraph: 2024)
 EXPOSE 8001 2024

@@ -4,9 +4,8 @@
 # Services:
 #   - nginx:       Reverse proxy (port 2026)
 #   - frontend:    Next.js production server
-#   - gateway:     FastAPI Gateway API
+#   - gateway:     FastAPI Gateway API (includes PPT generation)
 #   - langgraph:   LangGraph production server
-#   - pptagent:    PPT generation service
 #
 # Usage:
 #   docker compose up -d
@@ -29,7 +28,6 @@ services:
       - frontend
       - gateway
       - langgraph
-      - pptagent
     networks:
       - directionai
     restart: unless-stopped
@@ -42,6 +40,7 @@ services:
       target: prod
     container_name: directionai-frontend
     environment:
+      - CI=true
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
       - DEER_FLOW_INTERNAL_LANGGRAPH_BASE_URL=http://langgraph:2024
@@ -51,61 +50,67 @@ services:
       - directionai
     restart: unless-stopped
 
-  # ── Gateway API ───────────────────────────────────────────────────────────
+  # ── Gateway API (includes PPT generation) ────────────────────────────────
   gateway:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        - APT_MIRROR=${APT_MIRROR:-}
     container_name: directionai-gateway
-    command: >
-      sh -c "
-        cd backend &&
-        PYTHONPATH=. uv run uvicorn app.gateway.app:app
-        --host 0.0.0.0 --port 8001 --workers 2
-      "
+    command: sh -c "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers 2"
     environment:
-      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CI=true
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_HOST_BASE_DIR=/app/backend/.deer-flow
+      - DEER_FLOW_HOST_SKILLS_PATH=/mnt/skills
+      - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      - DEER_FLOW_CHANNELS_LANGGRAPH_URL=http://langgraph:2024
+      - DEER_FLOW_CHANNELS_GATEWAY_URL=http://gateway:8001
     volumes:
       - ./config.yaml:/app/backend/config.yaml:ro
       - ./skills:/mnt/skills:ro
       - ./outputs:/mnt/user-data/outputs
       - ${DEER_FLOW_HOME:-./.deer-flow}:/app/backend/.deer-flow
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.claude:/root/.claude:ro
+      - ${HOME}/.codex:/root/.codex:ro
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - directionai
     restart: unless-stopped
 
   # ── LangGraph Server ─────────────────────────────────────────────────────
   langgraph:
-    image: langgraph/langgraph-api:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        - APT_MIRROR=${APT_MIRROR:-}
     container_name: directionai-langgraph
+    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --no-reload --host 0.0.0.0 --port 2024 --n-jobs-per-worker 10"
     environment:
-      - LANGGRAPH_API_KEY=${LANGGRAPH_API_KEY:-}
-      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CI=true
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_CONFIG_PATH=/app/config.yaml
+      - DEER_FLOW_HOST_BASE_DIR=/app/backend/.deer-flow
+      - DEER_FLOW_HOST_SKILLS_PATH=/mnt/skills
+      - DEER_FLOW_SANDBOX_HOST=host.docker.internal
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./skills:/mnt/skills:ro
       - ./outputs:/mnt/user-data/outputs
-      - ${DEER_FLOW_HOME:-./.deer-flow}:/app/.deer-flow
-    networks:
-      - directionai
-    restart: unless-stopped
-
-  # ── PPT Generation Service ────────────────────────────────────────────────
-  pptagent:
-    build:
-      context: ./pptagent
-      dockerfile: Dockerfile
-    container_name: directionai-pptagent
-    environment:
-      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # Image generation settings
-      - IMAGE_GENERATION_PROVIDER=${IMAGE_GENERATION_PROVIDER:-doubao}
-      - DOUBAO_API_KEY=${DOUBAO_API_KEY:-}
-    volumes:
-      - ./pptagent/outputs:/app/outputs
+      - ${DEER_FLOW_HOME:-./.deer-flow}:/app/backend/.deer-flow
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.claude:/root/.claude:ro
+      - ${HOME}/.codex:/root/.codex:ro
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - directionai
     restart: unless-stopped

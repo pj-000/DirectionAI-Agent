@@ -6,10 +6,10 @@ import logging
 from pathlib import Path
 from typing import Callable
 from openai import OpenAI
-from tools.pptx_skill import run_js, skill_paths, assert_skill_present
-from tools.openai_compat import build_chat_completion_kwargs, stream_chat_completion_text
-from models.schemas import OutlinePlan, SlideOutline, SlideLayout, SlideEvalResult, VisualMode, resolve_visual_mode
-import config
+from ..tools.pptx_skill import PROJECT_ROOT, run_js, skill_paths, assert_skill_present
+from ..tools.openai_compat import build_chat_completion_kwargs, stream_chat_completion_text
+from ..models.schemas import OutlinePlan, SlideOutline, SlideLayout, SlideEvalResult, VisualMode, resolve_visual_mode
+from .. import config
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,7 @@ class PlannerAgent:
         self._skill_md = Path(_SKILL["skill_md"]).read_text(encoding="utf-8")
         self._pptxgenjs_md = Path(_SKILL["pptxgenjs_md"]).read_text(encoding="utf-8")
         self._local_rules_md = Path(_SKILL["local_rules_md"]).read_text(encoding="utf-8")
-        self._user_template = Path("prompts/planner_user.txt").read_text(encoding="utf-8")
+        self._user_template = (PROJECT_ROOT / "prompts" / "planner_user.txt").read_text(encoding="utf-8")
 
     def _handle_reasoning_chunk(self, chunk: str) -> None:
         if not chunk:
@@ -1159,7 +1159,7 @@ class PlannerAgent:
             raise ValueError("中间页至少需要一个 content 或 two_column 布局")
 
     def _make_research_slide(self, slide: SlideOutline):
-        from models.schemas import SlideSpec, TextElement
+        from ..models.schemas import SlideSpec, TextElement
 
         return SlideSpec(
             slide_index=slide.slide_index,

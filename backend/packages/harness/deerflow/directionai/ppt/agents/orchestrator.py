@@ -2,12 +2,12 @@ import time
 import os
 import asyncio
 from typing import Callable
-from agents.planner import PlannerAgent
-from agents.researcher import ResearchAgent
-from agents.asset_agent import AssetAgent
-from agents.evaluator import EvaluatorAgent
-from tools.pptx_skill import read_pptx, pptx_to_images
-import config
+from .planner import PlannerAgent
+from .researcher import ResearchAgent
+from .asset_agent import AssetAgent
+from .evaluator import EvaluatorAgent
+from ..tools.pptx_skill import read_pptx, pptx_to_images
+from .. import config
 
 
 class OrchestratorAgent:
@@ -270,7 +270,7 @@ class OrchestratorAgent:
             )
 
             # 构造一个简单的 feedback 对象传递文本问题
-            from models.schemas import SlideEvalResult
+            from ..models.schemas import SlideEvalResult
             feedback = SlideEvalResult(
                 slide_index=idx,
                 layout_score=3.0,

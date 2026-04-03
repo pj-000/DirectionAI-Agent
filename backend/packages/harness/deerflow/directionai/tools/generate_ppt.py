@@ -1,19 +1,15 @@
-"""DirectionAI Education Tools - PPT Generation."""
+"""DirectionAI Education Tools - PPT Generation (internal)."""
 
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Literal, Optional
+from typing import Literal
 
-import httpx
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-
 logger = logging.getLogger(__name__)
-
-DEFAULT_PPTAGENT_URL = "http://pptagent:8000"
 
 
 class GeneratePPTToolInput(BaseModel):
@@ -31,7 +27,7 @@ class GeneratePPTToolInput(BaseModel):
     content: str = Field(default="", description="附加内容要求或特殊章节安排等。")
 
 
-async def _generate_ppt_func(
+def _generate_ppt_func(
     topic: str,
     output_language: str = "中文",
     target_audience: str = "通用受众",
@@ -43,63 +39,40 @@ async def _generate_ppt_func(
     enable_web_search: bool = False,
     content: str = "",
 ) -> str:
+    import json as _json
+
     topic = topic.strip()
     min_slides = max(2, min(20, min_slides))
     max_slides = max(2, min(20, max_slides))
     if max_slides < min_slides:
         min_slides, max_slides = max_slides, min_slides
 
-    payload = {
+    ppt_params = {
         "topic": topic,
-        "model_provider": model_provider,
-        "output_language": output_language,
-        "target_audience": target_audience,
-        "style": style,
-        "enable_web_search": enable_web_search,
-        "image_mode": image_mode,
         "min_slides": min_slides,
         "max_slides": max_slides,
-        "debug_layout": False,
+        "output_language": output_language,
+        "target_audience": target_audience,
+        "model_provider": model_provider,
+        "image_mode": image_mode,
+        "enable_web_search": enable_web_search,
+        "style": style,
     }
-    if content:
-        payload["content"] = content
 
-    task_id = str(uuid.uuid4())[:8]
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{DEFAULT_PPTAGENT_URL}/stream_ppt",
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            if not resp.is_success:
-                error_detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
-                return f"错误：无法启动 PPT 生成任务 (pptagent 返回 {error_detail})。请确认 pptagent 服务已启动。"
-    except httpx.ConnectError:
-        return f"错误：无法连接到 pptagent 服务 ({DEFAULT_PPTAGENT_URL})。请确认 PPT 生成服务已启动。"
-    except httpx.TimeoutException:
-        return "错误：连接 pptagent 服务超时。请稍后重试。"
-    except Exception as exc:
-        logger.error("Failed to call pptagent: %s", exc)
-        return f"错误：启动 PPT 生成任务时发生错误: {exc}"
-
-    params = (
-        f"task={task_id}&topic={topic}&min_slides={min_slides}"
-        f"&max_slides={max_slides}&model_provider={model_provider}"
-        f"&output_language={output_language}&target_audience={target_audience}"
-    )
     model_label = "MiniMax M2.7" if model_provider == "minmax" else "Claude Sonnet"
 
+    # Return marker + placeholder. Frontend SSE streaming renders the live timeline.
+    # When SSE "done" arrives, PPTStreamingInline replaces the placeholder with download link.
     return (
+        f"__PPTGEN_START__{_json.dumps(ppt_params, ensure_ascii=False)}__PPTGEN_END__\n\n"
         f"✅ PPT 生成任务已启动！\n\n"
         f"**主题**: {topic}\n"
         f"**页数**: {min_slides}-{max_slides} 页\n"
         f"**语言**: {output_language}\n"
         f"**受众**: {target_audience}\n"
         f"**模型**: {model_label}\n\n"
-        f"📊 **查看生成进度**: 请访问 [PPT 生成页面](/workspace/ppt?{params}) 查看实时进度和预览。\n\n"
-        f"生成过程：规划大纲 → 补充资料（可选）→ 确定视觉主题 → 逐页生成 → 质量评估。"
+        f"📊 正在生成中，下方将实时展示进度...\n\n"
+        f"生成过程：规划大纲 → 确定视觉主题 → 逐页生成 → 质量评估。"
     )
 
 
@@ -111,7 +84,7 @@ generate_ppt_tool = StructuredTool.from_function(
 )
 
 
-# ─── Lesson Plan Tool ───────────────────────────────────────────────────────
+# ─── Lesson Plan Tool ────────────────────────────────────────────────────────
 
 
 class GenerateLessonPlanInput(BaseModel):
@@ -126,7 +99,7 @@ class GenerateLessonPlanInput(BaseModel):
     content: str = Field(default="", description="附加要求或特殊说明。")
 
 
-async def _generate_lesson_plan_func(**kwargs) -> str:
+def _generate_lesson_plan_func(**kwargs) -> str:
     topic = kwargs.get("topic", "").strip()
     if not topic:
         return "错误：教案主题不能为空。请提供要生成的教案主题。"
@@ -154,7 +127,7 @@ generate_lesson_plan_tool = StructuredTool.from_function(
 )
 
 
-# ─── Exam Tool ──────────────────────────────────────────────────────────────
+# ─── Exam Tool ───────────────────────────────────────────────────────────────
 
 
 class GenerateExamInput(BaseModel):
@@ -167,7 +140,7 @@ class GenerateExamInput(BaseModel):
     content: str = Field(default="", description="具体章节，重点知识、特殊要求。")
 
 
-async def _generate_exam_func(**kwargs) -> str:
+def _generate_exam_func(**kwargs) -> str:
     topic = kwargs.get("topic", "").strip()
     if not topic:
         return "错误：出题主题不能为空。请提供要生成的试题主题。"
@@ -197,7 +170,7 @@ generate_exam_tool = StructuredTool.from_function(
 )
 
 
-# ─── Evaluate PPT Tool ──────────────────────────────────────────────────────
+# ─── Evaluate PPT Tool ───────────────────────────────────────────────────────
 
 
 class EvaluatePPTInput(BaseModel):
@@ -209,7 +182,7 @@ class EvaluatePPTInput(BaseModel):
     lang: Literal["zh", "en"] = Field(default="zh", description="评估语言：'zh' 或 'en'。")
 
 
-async def _evaluate_ppt_func(**kwargs) -> str:
+def _evaluate_ppt_func(**kwargs) -> str:
     ppt_content = kwargs.get("ppt_content", "").strip()
     if not ppt_content:
         return "错误：PPT 内容不能为空。请提供要评估的 PPT 内容。"

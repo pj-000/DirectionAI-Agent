@@ -11,8 +11,8 @@ from typing import Any, Callable
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-import config
-from tools.openai_compat import build_chat_completion_kwargs, stream_chat_completion_text
+from .. import config
+from ..tools.openai_compat import build_chat_completion_kwargs, stream_chat_completion_text
 
 
 class PPTEvaluationRequest(BaseModel):

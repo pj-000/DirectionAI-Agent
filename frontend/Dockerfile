@@ -25,17 +25,20 @@ COPY . .
 
 # ── Dev: install only, CMD is overridden by docker-compose ───────────────────
 FROM base AS dev
+ENV CI=true
 RUN cd /app && pnpm install --frozen-lockfile
 EXPOSE 3000
 
 # ── Builder: install + compile Next.js ───────────────────────────────────────
 FROM base AS builder
+ENV CI=true
 RUN cd /app && pnpm install --frozen-lockfile
 # Skip env validation — runtime vars are injected by nginx/container
 RUN cd /app && SKIP_ENV_VALIDATION=1 pnpm build
 
 # ── Prod: minimal runtime with pre-built output ───────────────────────────────
 FROM node:22-alpine AS prod
+ENV CI=true
 ARG PNPM_STORE_PATH
 ARG NPM_REGISTRY
 RUN if [ -n "${NPM_REGISTRY}" ]; then \
@@ -45,6 +48,6 @@ RUN if [ -n "${NPM_REGISTRY}" ]; then \
 RUN pnpm config set store-dir ${PNPM_STORE_PATH}
 RUN if [ -n "${NPM_REGISTRY}" ]; then pnpm config set registry "${NPM_REGISTRY}"; fi
 WORKDIR /app
-COPY --from=builder /app ./app
+COPY --from=builder /app .
 EXPOSE 3000
 CMD ["sh", "-c", "cd /app && pnpm start"]

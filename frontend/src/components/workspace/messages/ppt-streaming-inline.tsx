@@ -1,15 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** 单条统一时间线条目：合并 thinking 和 progress */
-interface TimelineItem {
+interface ThinkingStep {
   step: number;
-  title: string;
-  thinkingContent: string;
-  // Which parts are done
-  thinkingDone: boolean;
-  progressDone: boolean;
+  node: string;
+  content: string;
+  status: "active" | "done";
+  progressMessage?: string;
 }
 
 interface DoneData {
@@ -25,6 +23,7 @@ type SSEEvent =
   | { event: "thinking_chunk"; data: string }
   | { event: "thinking_end"; data: { step: number; node: string } }
   | { event: "progress"; data: { step: number; total: number; message: string } }
+  | { event: "preview"; data: unknown }
   | { event: "done"; data: DoneData }
   | { event: "error"; data: { detail: string } };
 
@@ -33,15 +32,24 @@ interface PPTStreamingInlineProps {
 }
 
 export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
-  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [steps, setSteps] = useState<ThinkingStep[]>([]);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [doneData, setDoneData] = useState<DoneData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(true);
+  const [expectedTotal, setExpectedTotal] = useState(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Track whether we've already received a terminal event to prevent reconnections
   const terminalReceivedRef = useRef(false);
+  const queryString = useMemo(() => {
+    const queryParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params).sort(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
+      queryParams.set(key, String(value));
+    }
+    return queryParams.toString();
+  }, [params]);
 
   const connectSSE = useCallback(() => {
     if (terminalReceivedRef.current) return;
@@ -51,19 +59,16 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
       eventSourceRef.current = null;
     }
 
-    setTimeline([]);
+    setSteps([]);
     setPreviewImages([]);
     setDoneData(null);
     setError(null);
     setIsStreaming(true);
+    setExpectedTotal(0);
     terminalReceivedRef.current = false;
 
     const pptagentBase = `${window.location.protocol}//${window.location.host}/pptagentapi`;
-    const queryParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      queryParams.set(key, String(value));
-    }
-    const sseUrl = `${pptagentBase}/stream_ppt?${queryParams.toString()}`;
+    const sseUrl = `${pptagentBase}/stream_ppt?${queryString}`;
     const es = new EventSource(sseUrl);
     eventSourceRef.current = es;
 
@@ -73,95 +78,98 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
       switch (msg.event) {
         case "thinking_start": {
           const { step, node } = msg.data;
-          setTimeline((prev) => {
-            const exists = prev.find((i) => i.step === step);
+          setSteps((prev) => {
+            const next = prev.map((item) =>
+              item.status === "active" ? { ...item, status: "done" as const } : item,
+            );
+            const exists = next.find((item) => item.step === step);
             if (exists) {
-              // Update title if it was set by progress first
-              return prev.map((i) =>
-                i.step === step
-                  ? { ...i, title: node, thinkingDone: false }
-                  : i
+              return next.map((item) =>
+                item.step === step
+                  ? { ...item, node, status: "active" as const }
+                  : item,
               );
             }
             return [
-              ...prev.map((i) =>
-                i.step === step - 1 && !i.thinkingDone
-                  ? { ...i, thinkingDone: true }
-                  : i
-              ),
+              ...next,
               {
                 step,
-                title: node,
-                thinkingContent: "",
-                thinkingDone: false,
-                progressDone: false,
+                node,
+                content: "",
+                status: "active",
               },
             ];
           });
           break;
         }
         case "thinking_chunk": {
-          const text = msg.data as string;
-          setTimeline((prev) => {
-            const active = prev.find((i) => !i.thinkingDone);
+          const text = msg.data;
+          setSteps((prev) => {
+            const active = [...prev].reverse().find((item) => item.status === "active");
             if (!active) return prev;
-            return prev.map((i) =>
-              i.step === active.step
-                ? { ...i, thinkingContent: i.thinkingContent + text }
-                : i
+            return prev.map((item) =>
+              item.step === active.step
+                ? { ...item, content: item.content + text }
+                : item,
             );
           });
           break;
         }
         case "thinking_end": {
           const { step } = msg.data;
-          setTimeline((prev) =>
-            prev.map((i) =>
-              i.step === step ? { ...i, thinkingDone: true } : i
-            )
+          setSteps((prev) =>
+            prev.map((item) =>
+              item.step === step ? { ...item, status: "done" as const } : item,
+            ),
           );
           break;
         }
         case "progress": {
-          const { step, message } = msg.data;
-          setTimeline((prev) => {
-            const exists = prev.find((i) => i.step === step);
+          const { step, total, message } = msg.data;
+          if (total > 0) {
+            setExpectedTotal((prev) => Math.max(prev, total));
+          }
+          setSteps((prev) => {
+            const exists = prev.find((item) => item.step === step);
             if (exists) {
-              return prev.map((i) =>
-                i.step === step ? { ...i, title: message, progressDone: true } : i
+              return prev.map((item) =>
+                item.step === step
+                  ? {
+                      ...item,
+                      progressMessage: message,
+                      status: item.status === "active" ? "done" : item.status,
+                    }
+                  : item,
               );
             }
-            // Progress came before thinking_start for this step
-            // Mark previous item as thinking done
-            const updated = prev.map((i) =>
-              !i.thinkingDone ? { ...i, thinkingDone: true } : i
-            );
             return [
-              ...updated,
+              ...prev,
               {
                 step,
-                title: message,
-                thinkingContent: "",
-                thinkingDone: true,
-                progressDone: false,
+                node: message,
+                content: "",
+                status: "done",
+                progressMessage: message,
               },
             ];
           });
           break;
         }
+        case "preview": {
+          break;
+        }
         case "done": {
           terminalReceivedRef.current = true;
-          const data = msg.data as DoneData;
+          const data = msg.data;
           setDoneData(data);
           setPreviewImages(data.preview_images || []);
           setIsStreaming(false);
           es.close();
           eventSourceRef.current = null;
-          // Mark all pending progress as done
-          setTimeline((prev) =>
-            prev.map((i) =>
-              !i.progressDone ? { ...i, progressDone: true } : i
-            )
+          setSteps((prev) =>
+            prev.map((item) =>
+              item.status === "active" ? { ...item, status: "done" as const } : item,
+            ),
           );
           break;
         }
@@ -172,6 +180,11 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
           setIsStreaming(false);
           es.close();
           eventSourceRef.current = null;
+          setSteps((prev) =>
+            prev.map((item) =>
+              item.status === "active" ? { ...item, status: "done" as const } : item,
+            ),
+          );
           break;
         }
       }
@@ -179,39 +192,46 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
 
     es.addEventListener("thinking_start", (e) => {
       try {
-        handleEvent({ event: "thinking_start", data: JSON.parse((e as MessageEvent).data) });
+        handleEvent({ event: "thinking_start", data: JSON.parse(e.data) });
       } catch {}
     });
     es.addEventListener("thinking_chunk", (e) => {
       try {
-        handleEvent({ event: "thinking_chunk", data: (e as MessageEvent).data as string });
+        handleEvent({ event: "thinking_chunk", data: e.data });
       } catch {}
     });
     es.addEventListener("thinking_end", (e) => {
       try {
-        handleEvent({ event: "thinking_end", data: JSON.parse((e as MessageEvent).data) });
+        handleEvent({ event: "thinking_end", data: JSON.parse(e.data) });
       } catch {}
     });
     es.addEventListener("progress", (e) => {
       try {
-        handleEvent({ event: "progress", data: JSON.parse((e as MessageEvent).data) });
+        handleEvent({ event: "progress", data: JSON.parse(e.data) });
+      } catch {}
+    });
+    es.addEventListener("preview", (e) => {
+      try {
+        handleEvent({ event: "preview", data: JSON.parse(e.data) });
       } catch {}
     });
     es.addEventListener("done", (e) => {
       try {
-        handleEvent({ event: "done", data: JSON.parse((e as MessageEvent).data) });
+        handleEvent({ event: "done", data: JSON.parse(e.data) });
       } catch {}
     });
     es.addEventListener("error", (e) => {
       try {
-        handleEvent({ event: "error", data: JSON.parse((e as MessageEvent).data) });
+        if ("data" in e && typeof e.data === "string") {
+          handleEvent({ event: "error", data: JSON.parse(e.data) });
+        }
       } catch {}
     });
 
     es.onerror = () => {
       if (terminalReceivedRef.current) es.close();
     };
-  }, [params]);
+  }, [queryString]);
 
   useEffect(() => {
     connectSSE();
@@ -226,10 +246,10 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [timeline]);
+  }, [steps, previewImages, doneData]);
 
-  const doneCount = timeline.filter((i) => i.progressDone).length;
-  const totalCount = timeline.length;
+  const completedCount = steps.filter((item) => item.status === "done").length;
+  const totalCount = expectedTotal > 0 ? expectedTotal : steps.length;
 
   if (error) {
     return (
@@ -241,44 +261,42 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
 
   return (
     <div className="flex flex-col gap-3" ref={scrollRef}>
-      {/* 统一时间线 */}
-      {timeline.length > 0 && (
+      {steps.length > 0 && (
         <div className="space-y-2">
-          {timeline.map((item) => (
+          {steps.map((item) => (
             <div
               key={item.step}
               className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
-                item.progressDone
+                item.status === "done"
                   ? "border-green-200 bg-green-50"
-                  : item.thinkingDone
-                    ? "border-blue-200 bg-blue-50"
-                    : "border-blue-100 bg-blue-50"
+                  : "border-blue-100 bg-blue-50"
               }`}
             >
-              {/* 状态图标 */}
               <span
                 className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                  item.progressDone
+                  item.status === "done"
                     ? "bg-green-200 text-green-700"
-                    : item.thinkingDone
-                      ? "bg-blue-200 text-blue-700"
-                      : "bg-blue-100 text-blue-600"
+                    : "bg-blue-100 text-blue-600"
                 }`}
               >
-                {item.progressDone
-                  ? "✓"
-                  : item.thinkingDone
-                    ? "●"
-                    : "○"}
+                {item.status === "done" ? "✓" : "●"}
               </span>
 
               <div className="min-w-0 flex-1">
-                {/* 标题行 */}
-                <div className="font-medium text-foreground">{item.title}</div>
-                {/* 思考内容（仅在思考完成后显示，防止抖动） */}
-                {item.thinkingContent && (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-medium text-foreground">{item.node}</div>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    步骤 {item.step}
+                  </span>
+                </div>
+                {item.progressMessage && item.progressMessage !== item.node && (
+                  <div className="mt-1 text-[11px] text-green-700">
+                    {item.progressMessage}
+                  </div>
+                )}
+                {item.content && (
                   <div className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                    {item.thinkingContent}
+                    {item.content}
                   </div>
                 )}
               </div>
@@ -287,15 +305,13 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
         </div>
       )}
 
-      {/* 生成中指示器 */}
       {isStreaming && totalCount > 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-          生成中... ({doneCount}/{totalCount})
+          生成中... ({completedCount}/{totalCount})
         </div>
       )}
 
-      {/* 预览图 */}
       {doneData && previewImages.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground">
@@ -315,7 +331,6 @@ export function PPTStreamingInline({ params }: PPTStreamingInlineProps) {
         </div>
       )}
 
-      {/* 下载按钮 */}
       {doneData && (
         <div className="flex items-center gap-2">
           <a

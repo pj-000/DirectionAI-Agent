@@ -24,6 +24,7 @@ backend/__pycache__/
 backend/packages/**/__pycache__/
 backend/.langgraph_api/
 backend/.deer-flow/
+.deer-flow/
 backend/uv.lock
 
 # ── Node / Frontend ───────────────────────────────────────────────────────────

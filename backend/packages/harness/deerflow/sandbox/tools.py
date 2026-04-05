@@ -71,8 +71,23 @@ def _get_skills_host_path() -> str | None:
             value = str(skills_path)
             _get_skills_host_path._cached = value  # type: ignore[attr-defined]
             return value
+
+        # In containerized local-sandbox runs, skills are mounted at the
+        # configured container path (e.g. /mnt/skills) even when the configured
+        # host-relative path such as ./skills does not exist inside the image.
+        container_path = Path(config.skills.container_path)
+        if container_path.exists():
+            value = str(container_path)
+            _get_skills_host_path._cached = value  # type: ignore[attr-defined]
+            return value
     except Exception:
         pass
+
+    container_path = Path(_get_skills_container_path())
+    if container_path.exists():
+        value = str(container_path)
+        _get_skills_host_path._cached = value  # type: ignore[attr-defined]
+        return value
     return None
 
 

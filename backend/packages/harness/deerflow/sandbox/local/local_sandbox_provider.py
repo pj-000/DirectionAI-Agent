@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from deerflow.sandbox.local.local_sandbox import LocalSandbox
 from deerflow.sandbox.sandbox import Sandbox
@@ -36,6 +37,8 @@ class LocalSandboxProvider(SandboxProvider):
             # Only add mapping if skills directory exists
             if skills_path.exists():
                 mappings[container_path] = str(skills_path)
+            elif Path(container_path).exists():
+                mappings[container_path] = container_path
         except Exception as e:
             # Log but don't fail if config loading fails
             logger.warning("Could not setup skills path mapping: %s", e, exc_info=True)

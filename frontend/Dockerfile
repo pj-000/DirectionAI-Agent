@@ -31,7 +31,9 @@ EXPOSE 3000
 
 # ── Builder: install + compile Next.js ───────────────────────────────────────
 FROM base AS builder
+ARG NEXT_PUBLIC_LANGGRAPH_BASE_URL=/api/langgraph-compat
 ENV CI=true
+ENV NEXT_PUBLIC_LANGGRAPH_BASE_URL=${NEXT_PUBLIC_LANGGRAPH_BASE_URL}
 RUN cd /app && pnpm install --frozen-lockfile
 # Skip env validation — runtime vars are injected by nginx/container
 RUN cd /app && SKIP_ENV_VALIDATION=1 pnpm build
@@ -41,6 +43,8 @@ FROM node:22-alpine AS prod
 ENV CI=true
 ARG PNPM_STORE_PATH
 ARG NPM_REGISTRY
+ARG NEXT_PUBLIC_LANGGRAPH_BASE_URL=/api/langgraph-compat
+ENV NEXT_PUBLIC_LANGGRAPH_BASE_URL=${NEXT_PUBLIC_LANGGRAPH_BASE_URL}
 RUN if [ -n "${NPM_REGISTRY}" ]; then \
       export COREPACK_NPM_REGISTRY="${NPM_REGISTRY}"; \
     fi && \

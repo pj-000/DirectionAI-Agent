@@ -34,6 +34,14 @@ const config = {
         source: "/api/langgraph/:path*",
         destination: `${langgraphURL}/:path*`,
       });
+      rewrites.push({
+        source: "/api/langgraph-compat",
+        destination: `${gatewayURL}/api`,
+      });
+      rewrites.push({
+        source: "/api/langgraph-compat/:path*",
+        destination: `${gatewayURL}/api/:path*`,
+      });
     }
 
     if (!process.env.NEXT_PUBLIC_BACKEND_BASE_URL) {

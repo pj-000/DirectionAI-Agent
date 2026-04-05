@@ -24,7 +24,10 @@ class GeneratePPTToolInput(BaseModel):
     model_provider: Literal["minmax", "claude"] = Field(default="minmax", description="使用的模型：'minmax'（MiniMax M2.7）或 'claude'（Claude Sonnet）。")
     image_mode: Literal["generate", "search", "auto", "off"] = Field(default="generate", description="图片模式：'generate'（AI生图）、'search'（仅搜图）、'auto'（先搜后生）、'off'（无图）。")
     enable_web_search: bool = Field(default=False, description="是否联网搜索补充资料。")
-    content: str = Field(default="", description="附加内容要求或特殊章节安排等。")
+    content: str = Field(
+        default="",
+        description="补充给 PPT 生成器的详细内容。用户上传文档时，应把从文档中提炼出的摘要、主题章节、关键事实、表格要点、受众要求、页数约束等放在这里，而不是只传主题。除非用户明确要求先出大纲，否则不要在这里预先写死最终每一页的分页方案，分页规划应由 generate_ppt 自己完成。",
+    )
 
 
 def _generate_ppt_func(
@@ -42,10 +45,16 @@ def _generate_ppt_func(
     import json as _json
 
     topic = topic.strip()
+    content = content.strip()
     min_slides = max(2, min(20, min_slides))
     max_slides = max(2, min(20, max_slides))
     if max_slides < min_slides:
         min_slides, max_slides = max_slides, min_slides
+
+    # The streaming UI currently connects via GET query params.
+    # Keep document-derived context, but cap it to avoid oversized SSE URLs.
+    if len(content) > 6000:
+        content = content[:6000].rstrip() + "\n\n[文档摘要因流式传输长度限制被截断]"
 
     ppt_params = {
         "topic": topic,
@@ -57,6 +66,7 @@ def _generate_ppt_func(
         "image_mode": image_mode,
         "enable_web_search": enable_web_search,
         "style": style,
+        "content": content,
     }
 
     model_label = "MiniMax M2.7" if model_provider == "minmax" else "Claude Sonnet"
@@ -78,9 +88,10 @@ def _generate_ppt_func(
 
 generate_ppt_tool = StructuredTool.from_function(
     name="generate_ppt",
-    description="生成 PowerPoint 演示文稿。当用户想要创建、生成 PPT 或演示文稿时使用此工具。",
+    description="生成 PowerPoint 演示文稿。当用户想要创建、生成 PPT 或演示文稿时使用此工具。若用户上传了 PDF、Word、PPT、Excel 等文档，应先读取并总结文档内容，再把结构化摘要和关键要求放入 content 后调用此工具。该工具会启动异步生成流程，前端会在工具卡片中实时展示规划、生成和最终预览。",
     func=_generate_ppt_func,
     args_schema=GeneratePPTToolInput,
+    return_direct=True,
 )
 
 

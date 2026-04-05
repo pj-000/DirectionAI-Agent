@@ -303,6 +303,9 @@ export function useThreadStream({
                   filename: info.filename,
                   size: info.size,
                   path: info.virtual_path,
+                  markdown_file: info.markdown_file,
+                  markdown_path: info.markdown_virtual_path,
+                  markdown_virtual_path: info.markdown_virtual_path,
                   status: "uploaded" as const,
                 }),
               );
@@ -340,6 +343,9 @@ export function useThreadStream({
             filename: info.filename,
             size: info.size,
             path: info.virtual_path,
+            markdown_file: info.markdown_file,
+            markdown_path: info.markdown_virtual_path,
+            markdown_virtual_path: info.markdown_virtual_path,
             status: "uploaded" as const,
           }),
         );

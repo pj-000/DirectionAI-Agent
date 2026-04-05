@@ -28,7 +28,10 @@ class GeneratePPTToolInput(BaseModel):
     model_provider: Literal["minmax", "claude"] = Field(default="minmax", description="使用的模型：'minmax'（MiniMax M2.7）或 'claude'（Claude Sonnet）。")
     image_mode: Literal["generate", "search", "auto", "off"] = Field(default="generate", description="图片模式：'generate'（AI生图）、'search'（仅搜图）、'auto'（先搜后生）、'off'（无图）。")
     enable_web_search: bool = Field(default=False, description="是否联网搜索补充资料。")
-    content: str = Field(default="", description="附加内容要求或特殊章节安排等。")
+    content: str = Field(
+        default="",
+        description="补充给 PPT 生成器的详细内容。用户上传文档时，应把从文档中提炼出的摘要、章节结构、关键事实、表格要点、受众要求、页数约束等放在这里，而不是只传主题。",
+    )
 
 
 async def _generate_ppt_func(
@@ -105,9 +108,10 @@ async def _generate_ppt_func(
 
 generate_ppt_tool = StructuredTool.from_function(
     name="generate_ppt",
-    description="生成 PowerPoint 演示文稿。当用户想要创建、生成 PPT 或演示文稿时使用此工具。",
+    description="生成 PowerPoint 演示文稿。当用户想要创建、生成 PPT 或演示文稿时使用此工具。若用户上传了 PDF、Word、PPT、Excel 等文档，应先读取并总结文档内容，再把结构化摘要和关键要求放入 content 后调用此工具。该工具会启动异步生成流程，前端会在工具卡片中实时展示规划、生成和最终预览。",
     func=_generate_ppt_func,
     args_schema=GeneratePPTToolInput,
+    return_direct=True,
 )
 
 

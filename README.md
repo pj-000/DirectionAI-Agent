@@ -12,6 +12,11 @@ DirectionAI-Agent/
 ├── skills/              # 技能定义
 │   └── public/
 │       ├── ppt-generation/
+│       ├── document-processor-pdf/
+│       ├── document-processor-docx/
+│       ├── document-processor-markdown/
+│       ├── document-processor-pptx/
+│       ├── document-summarizer/
 │       ├── lesson-plan-generation/
 │       └── exam-generation/
 ├── docker-compose.yaml  # Docker 编排配置
@@ -61,9 +66,25 @@ make dev
 
 - **Tool**: `generate_ppt` (DeerFlow Tool)
 - **Skill**: `skills/public/ppt-generation/SKILL.md`
+- **文档处理 Skills**:
+  - `skills/public/document-processor-pdf/SKILL.md`
+  - `skills/public/document-processor-docx/SKILL.md`
+  - `skills/public/document-processor-markdown/SKILL.md`
+  - `skills/public/document-processor-pptx/SKILL.md`
+  - `skills/public/document-summarizer/SKILL.md`
 - **SSE 路由**: `/pptagentapi/stream_ppt`
 - **前端页面**: `/workspace/ppt`
 - **流式体验**: ThinkingProcess 组件实时显示生成进度
+
+当用户上传 PDF / Word / Markdown / PPT 文档并要求生成 PPT 时，可以组合使用上述文档处理 skill：
+先提取文档文本与表格，再生成结构化摘要，最后把摘要喂给 PPT 规划与逐页生成流程。
+
+当前在 DeerFlow 聊天链路中的适配方式是：
+- 前端上传后会把原文件虚拟路径与转换后的 Markdown 虚拟路径一起写入消息元数据
+- Lead Agent 会优先读取转换后的 Markdown，而不是直接读取 PDF / DOCX / PPTX 二进制文件；如果用户上传的本身就是 `.md`，则直接读取该文件
+- 只有当用户明确要求“根据上传文档生成 PPT”时，Agent 才会强制参考 `document-processor-pdf` / `document-processor-docx` / `document-processor-markdown` / `document-processor-pptx` / `document-summarizer` 完成文档抽取与结构化
+- 在这条文档到 PPT 的链路里，主 agent 只负责提炼文档主题、章节和关键事实，不负责提前拍板最终每一页内容；真正的分页规划交给 `generate_ppt`
+- 最终通过 `generate_ppt(content=...)` 把文档摘要、章节结构、关键事实和页数约束传给 PPT 生成器；这些内容现在会真正透传到流式 `/stream_ppt` 请求
 
 ### 路由架构
 

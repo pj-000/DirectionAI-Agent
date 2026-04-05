@@ -26,6 +26,20 @@ type MessageGroup =
   | AssistantClarificationGroup
   | AssistantSubagentGroup;
 
+const PPTGEN_MARKER = "__PPTGEN_START__";
+
+function hasPPTGenerationMarker(message: Message) {
+  if (typeof message.content === "string") {
+    return message.content.includes(PPTGEN_MARKER);
+  }
+  if (Array.isArray(message.content)) {
+    return message.content.some(
+      (part) => part.type === "text" && part.text.includes(PPTGEN_MARKER),
+    );
+  }
+  return false;
+}
+
 export function groupMessages<T>(
   messages: Message[],
   mapper: (group: MessageGroup) => T,
@@ -35,6 +49,7 @@ export function groupMessages<T>(
   }
 
   const groups: MessageGroup[] = [];
+  let suppressAssistantAfterPPT = false;
 
   // Returns the last group if it can still accept tool messages
   // (i.e. it's an in-flight processing group, not a terminal human/assistant group).
@@ -57,6 +72,7 @@ export function groupMessages<T>(
     }
 
     if (message.type === "human") {
+      suppressAssistantAfterPPT = false;
       groups.push({ id: message.id, type: "human", messages: [message] });
       continue;
     }
@@ -75,6 +91,9 @@ export function groupMessages<T>(
         const open = lastOpenGroup();
         if (open) {
           open.messages.push(message);
+          if (hasPPTGenerationMarker(message)) {
+            suppressAssistantAfterPPT = true;
+          }
         } else {
           console.error(
             "Unexpected tool message outside a processing group",
@@ -86,6 +105,10 @@ export function groupMessages<T>(
     }
 
     if (message.type === "ai") {
+      if (suppressAssistantAfterPPT) {
+        continue;
+      }
+
       if (hasPresentFiles(message)) {
         groups.push({
           id: message.id,
@@ -331,6 +354,9 @@ export interface FileInMessage {
   filename: string;
   size: number; // bytes
   path?: string; // virtual path, may not be set during upload
+  markdown_file?: string;
+  markdown_path?: string; // converted markdown virtual path
+  markdown_virtual_path?: string; // kept for compatibility with upload API shape
   status?: "uploading" | "uploaded";
 }
 
@@ -361,14 +387,13 @@ export function parseUploadedFiles(content: string): FileInMessage[] {
     return [];
   }
 
-  // Check if the backend reported no new files were uploaded in this message
-  if (uploadedFilesContent?.includes("(empty)")) {
-    return [];
-  }
-
   // Parse file list
-  // Format: - filename (size)\n  Path: /path/to/file
-  const fileRegex = /- ([^\n(]+)\s*\(([^)]+)\)\s*\n\s*Path:\s*([^\n]+)/g;
+  // Format:
+  // - filename (size)
+  //   Path: /path/to/file
+  //   Markdown Path: /path/to/file.md
+  const fileRegex =
+    /- ([^\n(]+)\s*\(([^)]+)\)\s*\n\s*Path:\s*([^\n]+)(?:\n\s*Markdown Path:\s*([^\n]+))?/g;
   const files: FileInMessage[] = [];
   let fileMatch;
 
@@ -377,6 +402,8 @@ export function parseUploadedFiles(content: string): FileInMessage[] {
       filename: fileMatch[1].trim(),
       size: parseInt(fileMatch[2].trim(), 10) ?? 0,
       path: fileMatch[3].trim(),
+      markdown_path: fileMatch[4]?.trim(),
+      markdown_virtual_path: fileMatch[4]?.trim(),
     });
   }
 

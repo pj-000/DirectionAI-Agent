@@ -194,6 +194,14 @@ Configuration priority:
 3. `extensions_config.json` in current directory (backend/)
 4. `extensions_config.json` in parent directory (project root - **recommended location**)
 
+**DirectionAI skills now bundled in `skills/public/`:**
+- `ppt-generation` — main PPT generation workflow
+- `document-processor-pdf` — extract text/tables from uploaded PDFs
+- `document-processor-docx` — extract text/tables from uploaded Word docs
+- `document-processor-markdown` — extract text/tables from uploaded Markdown docs
+- `document-processor-pptx` — extract text/tables from uploaded PPT/PPTX docs
+- `document-summarizer` — structure extracted document content for downstream PPT planning
+
 ### Gateway API (`app/gateway/`)
 
 FastAPI application on port 8001 with health check at `GET /health`.
@@ -212,6 +220,14 @@ FastAPI application on port 8001 with health check at `GET /health`.
 | **Suggestions** (`/api/threads/{id}/suggestions`) | `POST /` - generate follow-up questions; rich list/block model content is normalized before JSON parsing |
 
 Proxied through nginx: `/api/langgraph/*` → LangGraph, all other `/api/*` → Gateway.
+
+**Upload-driven PPT flow**:
+- Upload API returns both the original upload virtual path and the converted Markdown virtual path when the file type is convertible
+- Frontend keeps both paths in `additional_kwargs.files`
+- `UploadsMiddleware` injects them into the last human message under `<uploaded_files>`
+- Only when the user explicitly asks to generate a PPT from uploaded documents, `UploadsMiddleware` additionally injects a skill-driven workflow that points the agent to `document-processor-pdf` / `document-processor-docx` / `document-processor-markdown` / `document-processor-pptx` / `document-summarizer` / `ppt-generation`
+- In that explicit document-to-PPT case, Lead Agent should prefer the converted Markdown path when usable, otherwise follow the skill workflow to extract content from the original document and pass the distilled structure into `generate_ppt(content=...)`
+- In that explicit document-to-PPT case, the lead agent should not pre-commit the final per-slide outline; `generate_ppt` owns the actual PPT planning and page allocation
 
 ### Sandbox System (`packages/harness/deerflow/sandbox/`)
 

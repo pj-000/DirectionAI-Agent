@@ -209,12 +209,12 @@ function MessageContent_({
   // Detect PPT generation marker: __PPTGEN_START__{...params...}__PPTGEN_END__
   const PPTGEN_MARKER = "__PPTGEN_START__";
   const pptgenMatch = !isHuman && rawContent?.includes(PPTGEN_MARKER)
-    ? rawContent.match(/__PPTGEN_START__(.+?)__PPTGEN_END__/s)
+    ? /__PPTGEN_START__(.+?)__PPTGEN_END__/s.exec(rawContent)
     : null;
   if (pptgenMatch?.[1]) {
     let pptParams: Record<string, string | number | boolean> = {};
     try {
-      pptParams = JSON.parse(pptgenMatch[1]!);
+      pptParams = JSON.parse(pptgenMatch[1]);
     } catch {
       // ignore parse errors
     }

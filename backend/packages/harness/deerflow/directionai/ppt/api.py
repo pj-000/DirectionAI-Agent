@@ -243,6 +243,8 @@ SENSITIVE_THINKING_PATTERNS = (
     "vertical accent", "accent strip", "near leftedge", "golden accent",
     "limit point", "function curve", "coordinate plane", "epsilon-delta",
     "ε-δ", "primary:", "secondary:", "accent:", "layout instruction",
+    "key requirements", "generated image available at", "let me write the code",
+    "i should:", "for a two-column layout", "for a two column layout",
     "让我分析这个需求", "分析需求：", "构建一个", "用矩形绘制", "用圆形表示",
     "右侧浅色", "左侧深色", "底部极细", "右上角抽象",
 )
@@ -500,8 +502,6 @@ def generate_ppt_bundle(req: PPTGenerationRequest, emit: Callable[[str, Any], No
             if image_path:
                 summary += "配图会跟着这一页的重点走，避免喧宾夺主。"
             start_step(current_step, node, summary)
-            layout_name = str(getattr(getattr(slide, "layout", None), "value", getattr(slide, "layout", "")) or "").lower()
-            raw_reasoning_enabled["value"] = layout_name in {"content", "two_column"}
             try:
                 code = orchestrator.planner.plan_slide(
                     slide=slide, theme=theme, research=research, image_path=image_path,

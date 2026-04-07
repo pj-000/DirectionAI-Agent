@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import uuid
-from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
 from deerflow.directionai.runtime_paths import get_directionai_data_dir
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
+
+from .ppt_content_preparation import build_task_payload
 
 logger = logging.getLogger(__name__)
 
@@ -51,30 +51,24 @@ def _generate_ppt_func(
     content: str = "",
 ) -> str:
     topic = topic.strip()
-    content = content.strip()
     min_slides = max(4, min(20, min_slides))
     max_slides = max(4, min(20, max_slides))
     if max_slides < min_slides:
         min_slides, max_slides = max_slides, min_slides
 
-    # The streaming UI currently connects via GET query params.
-    # Keep document-derived context, but cap it to avoid oversized SSE URLs.
-    if len(content) > 6000:
-        content = content[:6000].rstrip() + "\n\n[文档摘要因流式传输长度限制被截断]"
-
     task_id = f"ppttask_{uuid.uuid4().hex}"
-    ppt_params = {
-        "topic": topic,
-        "min_slides": min_slides,
-        "max_slides": max_slides,
-        "output_language": output_language,
-        "target_audience": target_audience,
-        "model_provider": model_provider,
-        "image_mode": image_mode,
-        "enable_web_search": enable_web_search,
-        "style": style,
-        "content": content,
-    }
+    ppt_params = build_task_payload(
+        topic=topic,
+        min_slides=min_slides,
+        max_slides=max_slides,
+        output_language=output_language,
+        target_audience=target_audience,
+        model_provider=model_provider,
+        image_mode=image_mode,
+        enable_web_search=enable_web_search,
+        style=style,
+        content=content,
+    )
     (_PPT_TASK_ROOT / f"{task_id}.json").write_text(
         json.dumps(ppt_params, ensure_ascii=False, indent=2),
         encoding="utf-8",

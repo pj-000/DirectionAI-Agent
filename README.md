@@ -2,13 +2,16 @@
 
 基于 DeerFlow v2 框架的教育 AI Agent 系统，集成了 PPT 生成、教案生成、试题生成等教育技能。
 
+当前教育工具分工：
+- `generate_ppt` 负责异步流式生成 PPT，并在聊天区展示实时进度
+- `generate_lesson_plan` / `generate_exam` / `evaluate_ppt` 直接在聊天中返回可编辑的 Markdown 内容
+
 ## 架构
 
-```
+```text
 DirectionAI-Agent/
-├── backend/              # DeerFlow LangGraph Server (symlink)
-├── frontend/            # DeerFlow Next.js 前端 (symlink)
-├── pptagent/            # PPT 生成服务 (symlink to /Users/sss/directionai/pptagent)
+├── backend/             # DeerFlow LangGraph / Gateway 后端
+├── frontend/            # DeerFlow Next.js 前端
 ├── skills/              # 技能定义
 │   └── public/
 │       ├── ppt-generation/
@@ -26,39 +29,72 @@ DirectionAI-Agent/
 
 ## 快速开始
 
-### 1. 初始化配置
+### 1. 准备环境
+
+```bash
+git clone git@github.com:pj-000/DirectionAI-Agent.git
+cd DirectionAI-Agent
+```
+
+需要先安装：
+
+- Docker Desktop 或 Docker Engine + Docker Compose
+- 可访问外部模型服务的网络环境
+
+### 2. 初始化配置
 
 ```bash
 # 复制环境变量模板
 cp .env.example .env
 
-# 编辑 .env 填入 API Key
+# 编辑 .env 填入密钥
 vim .env
 ```
 
-### 2. 创建 symlinks
+至少需要补这些变量：
 
-```bash
-# 链接 DeerFlow 源码
-ln -sf ../deer-flow-github/backend backend
-ln -sf ../deer-flow-github/frontend frontend
-ln -sf ../pptagent pptagent
-```
+- `MINIMAX_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `BETTER_AUTH_SECRET`
+
+可选但推荐：
+
+- `BETTER_AUTH_URL`
+- `DOUBAO_API_KEY`
+- `LANGGRAPH_API_KEY`
 
 ### 3. Docker 启动
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 # 访问 http://localhost:2026
 ```
 
-### 4. 本地开发
+首次启动会比较慢，因为容器会重新创建 Python 虚拟环境并安装前后端依赖。
+看到前端首页能打开，不代表后端已经完全热好；`gateway` / `langgraph` 首次 warmup 可能还需要几十秒。
+
+### 4. 常见启动检查
+
+```bash
+docker compose ps
+docker compose logs -f gateway
+docker compose logs -f langgraph
+```
+
+如果 `gateway` 仍在下载或安装 Python 依赖，稍等即可。
+
+### 5. 本地开发
 
 ```bash
 cd backend && uv sync
 cd frontend && pnpm install
 make dev
 ```
+
+## 部署说明
+
+这个仓库现在已经是自包含结构，不再依赖额外的 `pptagent` 仓库，也不需要手动创建 `backend` / `frontend` / `pptagent` symlink。
+PPT 生成链路已经内置在当前仓库的 `gateway` 服务中。
 
 ## 集成说明
 
@@ -76,6 +112,12 @@ make dev
 - **前端页面**: `/workspace/ppt`
 - **流式体验**: ThinkingProcess 组件实时显示生成进度
 
+### 其他教育工具
+
+- **教案生成**: `generate_lesson_plan` 直接返回结构化教案 Markdown，可继续让 Agent 细化
+- **试题生成**: `generate_exam` 直接返回带答案与评分建议的试题 Markdown
+- **PPT 评估**: `evaluate_ppt` 直接返回分维度评分、原因与优化建议；若评估模型不可用，会退回启发式自查结果
+
 当用户上传 PDF / Word / Markdown / PPT 文档并要求生成 PPT 时，可以组合使用上述文档处理 skill：
 先提取文档文本与表格，再生成结构化摘要，最后把摘要喂给 PPT 规划与逐页生成流程。
 
@@ -85,13 +127,15 @@ make dev
 - 只有当用户明确要求“根据上传文档生成 PPT”时，Agent 才会强制参考 `document-processor-pdf` / `document-processor-docx` / `document-processor-markdown` / `document-processor-pptx` / `document-summarizer` 完成文档抽取与结构化
 - 在这条文档到 PPT 的链路里，主 agent 只负责提炼文档主题、章节和关键事实，不负责提前拍板最终每一页内容；真正的分页规划交给 `generate_ppt`
 - 最终通过 `generate_ppt(content=...)` 把文档摘要、章节结构、关键事实和页数约束传给 PPT 生成器；这些内容现在会真正透传到流式 `/stream_ppt` 请求
+- 如果用户后续基于已生成的 PPT、Markdown 或其他 artifact 继续提问，系统默认把这些产物当作会话上下文来读取，而不是自动再次生成文件
+- 只有当用户明确要求“重新生成 PPT”“修改 PPT”“导出成新文件”等操作时，才会把已有 artifact 当作新的生成目标
 
 ### 路由架构
 
-```
+```text
 用户 → DeerFlow Chat → Lead Agent → generate_ppt Tool
                                     ↓
-                            pptagent SSE stream
+                            gateway 内部 PPT 流式生成
                                     ↓
                       /workspace/ppt (前端 SSE 订阅)
                                     ↓
@@ -103,7 +147,7 @@ make dev
 - `/` → Next.js 前端
 - `/api/*` → DeerFlow Gateway API
 - `/api/langgraph/*` → LangGraph Server
-- `/pptagentapi/*` → PPT 生成服务
+- `/pptagentapi/*` → Gateway 暴露的 PPT 流式接口
 
 ## 开发说明
 

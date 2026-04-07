@@ -9,9 +9,12 @@ import queue
 import re
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Literal
+
+from deerflow.directionai.runtime_paths import get_directionai_data_dir
 
 from .models.schemas import OutlinePlan, SlideLayout
 from .agents.orchestrator import OrchestratorAgent
@@ -23,8 +26,8 @@ from .agents.ppt_evaluator import (
 from .tools.pptx_skill import get_preview_runtime_diagnostics, read_pptx
 
 # ─── Output paths ────────────────────────────────────────────────────────────
-_DEER_FLOW_HOME = os.environ.get("DEER_FLOW_HOME", ".deer-flow")
-OUTPUT_ROOT = Path(_DEER_FLOW_HOME) / "outputs"
+_DEER_FLOW_HOME = get_directionai_data_dir()
+OUTPUT_ROOT = _DEER_FLOW_HOME / "outputs"
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
 
@@ -373,9 +376,9 @@ async def _yield_stream_item(item: dict[str, Any], sanitizer: _ThinkingStreamSan
 
 def generate_ppt_bundle(req: PPTGenerationRequest, emit: Callable[[str, Any], None] | None = None) -> GenerationArtifacts:
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    output_filename = f"{slugify(req.topic)}.pptx"
+    biz_id = f"ppt_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    output_filename = f"{slugify(req.topic)}_{biz_id}.pptx"
     output_path = str((OUTPUT_ROOT / output_filename).resolve())
-    biz_id = f"ppt_{int(time.time() * 1000)}"
     raw_reasoning_enabled = {"value": False}
     current_node = {"value": "初始化生成任务"}
 

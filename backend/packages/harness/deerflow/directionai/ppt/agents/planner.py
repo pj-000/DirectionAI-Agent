@@ -1136,8 +1136,73 @@ class PlannerAgent:
             "slides": normalized_slides,
         }
         outline = OutlinePlan.model_validate(normalized)
+        outline = self._normalize_outline_structure(outline)
         self._validate_outline_structure(outline)
         return outline
+
+    def _normalize_outline_structure(self, outline: OutlinePlan) -> OutlinePlan:
+        slides = list(outline.slides)
+        if not slides:
+            return outline
+
+        if len(slides) < 4:
+            raise ValueError("PPT 至少需要 4 页，才能满足 cover / toc / content / closing 结构")
+
+        slides[0] = slides[0].model_copy(
+            update={
+                "slide_index": 0,
+                "layout": SlideLayout.COVER,
+                "topic": slides[0].topic or outline.title,
+                "objective": slides[0].objective or "概括整份 PPT 主题并建立开场氛围",
+                "image_prompt": None,
+                "visual_mode": VisualMode.AUTO,
+            }
+        )
+
+        toc_topic = slides[1].topic
+        if not toc_topic or toc_topic == outline.topic:
+            toc_topic = "目录"
+        slides[1] = slides[1].model_copy(
+            update={
+                "slide_index": 1,
+                "layout": SlideLayout.TOC,
+                "topic": toc_topic,
+                "objective": slides[1].objective or "概览整份 PPT 的章节结构",
+                "image_prompt": None,
+                "visual_mode": VisualMode.AUTO,
+            }
+        )
+
+        last_index = len(slides) - 1
+        closing_topic = slides[-1].topic
+        if not closing_topic or closing_topic == outline.topic:
+            closing_topic = "总结与展望"
+        slides[-1] = slides[-1].model_copy(
+            update={
+                "slide_index": last_index,
+                "layout": SlideLayout.CLOSING,
+                "topic": closing_topic,
+                "objective": slides[-1].objective or "总结核心信息并完成收束",
+                "image_prompt": None,
+                "visual_mode": VisualMode.AUTO,
+            }
+        )
+
+        middle = slides[2:-1]
+        if middle and not any(item.layout in {SlideLayout.CONTENT, SlideLayout.TWO_COLUMN} for item in middle):
+            first_middle = middle[0]
+            slides[2] = first_middle.model_copy(
+                update={
+                    "slide_index": 2,
+                    "layout": SlideLayout.CONTENT,
+                    "objective": first_middle.objective or "展开主题的第一个核心知识点",
+                }
+            )
+
+        for idx in range(2, last_index):
+            slides[idx] = slides[idx].model_copy(update={"slide_index": idx})
+
+        return outline.model_copy(update={"slides": slides})
 
     def _validate_outline_structure(self, outline: OutlinePlan) -> None:
         if not outline.slides:

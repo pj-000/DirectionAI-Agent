@@ -88,6 +88,8 @@ make stop       # Stop all services
 - Active entrypoint: `packages/harness/deerflow/directionai/tools/generate_ppt.py`
 - Config reference: keep `config.yaml` pointing to `deerflow.directionai.tools:generate_ppt_tool`
 - Legacy duplicate removed: do not recreate `packages/harness/deerflow/tools/generate_ppt.py`
+- PPT requests are now persisted as task payload files under `DEER_FLOW_HOME/ppt_tasks`, then streamed via `/pptagentapi/stream_ppt/{task_id}` to avoid oversized query strings
+- Generated PPT filenames must remain unique per run; do not revert to plain `topic.pptx` naming
 
 **Backend directory** (for backend development only):
 ```bash

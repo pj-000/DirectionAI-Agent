@@ -11,6 +11,7 @@ import {
   SquareTerminalIcon,
   WrenchIcon,
 } from "lucide-react";
+import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import {
@@ -31,11 +32,13 @@ import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import { extractTitleFromMarkdown } from "@/core/utils/markdown";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
+import { clearActiveChatPPTTask } from "@/components/workspace/ppt/chat-ppt-task-session";
 
 import { useArtifacts } from "../artifacts";
 import { FlipDisplay } from "../flip-display";
 import { Tooltip } from "../tooltip";
 
+import { useThread } from "./context";
 import { MarkdownContent } from "./markdown-content";
 import { PPTStreamingInline } from "./ppt-streaming-inline";
 
@@ -43,12 +46,16 @@ export function MessageGroup({
   className,
   messages,
   isLoading = false,
+  enablePPTStreaming = false,
 }: {
   className?: string;
   messages: Message[];
   isLoading?: boolean;
+  enablePPTStreaming?: boolean;
 }) {
   const { t } = useI18n();
+  const { thread_id } = useParams<{ thread_id: string }>();
+  const { activePPTTaskId, setActivePPTTaskId } = useThread();
   const [showAbove, setShowAbove] = useState(
     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true",
   );
@@ -122,6 +129,12 @@ export function MessageGroup({
                 {...lastToolCallStep}
                 isLast={true}
                 isLoading={isLoading}
+                enablePPTStreaming={enablePPTStreaming}
+                activePPTTaskId={activePPTTaskId}
+                onTerminalTask={(taskId) => {
+                  setActivePPTTaskId?.(null);
+                  clearActiveChatPPTTask(thread_id, taskId);
+                }}
               />
             </FlipDisplay>
           )}
@@ -139,6 +152,9 @@ function ToolCall({
   result,
   isLast = false,
   isLoading = false,
+  enablePPTStreaming = false,
+  activePPTTaskId,
+  onTerminalTask,
 }: {
   id?: string;
   messageId?: string;
@@ -147,6 +163,9 @@ function ToolCall({
   result?: string | Record<string, unknown>;
   isLast?: boolean;
   isLoading?: boolean;
+  enablePPTStreaming?: boolean;
+  activePPTTaskId?: string | null;
+  onTerminalTask?: (taskId: string) => void;
 }) {
   const { t } = useI18n();
   const { setOpen, autoOpen, autoSelect, selectedArtifact, select } =
@@ -358,17 +377,35 @@ function ToolCall({
       ></ChainOfThoughtStep>
     );
   } else if (name === "generate_ppt") {
-    // Tool result contains __PPTGEN_START__{...params...}__PPTGEN_END__
     const resultStr = typeof result === "string" ? result : JSON.stringify(result);
     const markerMatch = resultStr
       ? /__PPTGEN_START__(.+?)__PPTGEN_END__/s.exec(resultStr)
       : null;
     if (markerMatch?.[1]) {
       try {
-        const pptParams = JSON.parse(markerMatch[1]);
+        const pptPayload = JSON.parse(markerMatch[1]) as Record<
+          string,
+          string | number | boolean
+        >;
+        const taskId =
+          typeof pptPayload.task_id === "string" ? pptPayload.task_id : undefined;
         return (
           <ChainOfThoughtStep key={id} label={t.toolCalls.useTool(name)} icon={WrenchIcon}>
-            <PPTStreamingInline params={pptParams} />
+            <PPTStreamingInline
+              taskId={taskId}
+              params={taskId ? undefined : pptPayload}
+              enabled={
+                enablePPTStreaming &&
+                isLast &&
+                (!taskId || taskId === activePPTTaskId)
+              }
+              onTerminal={() => {
+                if (!taskId || taskId !== activePPTTaskId) {
+                  return;
+                }
+                onTerminalTask?.(taskId);
+              }}
+            />
           </ChainOfThoughtStep>
         );
       } catch {

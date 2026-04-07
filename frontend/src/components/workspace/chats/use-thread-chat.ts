@@ -19,6 +19,21 @@ export function useThreadChat() {
   );
 
   useEffect(() => {
+    if (!threadIdFromPath) {
+      return;
+    }
+
+    if (threadIdFromPath === "new") {
+      setIsNewThread(true);
+      setThreadId(uuid());
+      return;
+    }
+
+    setIsNewThread(false);
+    setThreadId(threadIdFromPath);
+  }, [threadIdFromPath]);
+
+  useEffect(() => {
     if (pathname.endsWith("/new")) {
       setIsNewThread(true);
       setThreadId(uuid());

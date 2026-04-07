@@ -44,6 +44,7 @@ export function MessageList({
   const rehypePlugins = useRehypeSplitWordsIntoSpans(thread.isLoading);
   const updateSubtask = useUpdateSubtask();
   const messages = thread.messages;
+  const latestMessageId = messages.at(-1)?.id;
   if (thread.isThreadLoading && messages.length === 0) {
     return <MessageListSkeleton />;
   }
@@ -60,6 +61,7 @@ export function MessageList({
                   key={`${group.id}/${msg.id}`}
                   message={msg}
                   isLoading={thread.isLoading}
+                  enablePPTStreaming={msg.id === latestMessageId}
                 />
               );
             });
@@ -195,6 +197,9 @@ export function MessageList({
               key={"group-" + group.id}
               messages={group.messages}
               isLoading={thread.isLoading}
+              enablePPTStreaming={group.messages.some(
+                (message) => message.id === latestMessageId,
+              )}
             />
           );
         })}

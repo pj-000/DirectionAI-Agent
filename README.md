@@ -1,10 +1,10 @@
 # DirectionAI Agent
 
-基于 DeerFlow v2 框架的教育 AI Agent 系统，集成了 PPT 生成、教案生成、试题生成等教育技能。
+基于 DeerFlow v2 框架的教育 AI Agent 系统，当前聚焦 PPT 生成与文档到 PPT 的工作流。
 
-当前教育工具分工：
+当前核心能力：
 - `generate_ppt` 负责异步流式生成 PPT，并在聊天区展示实时进度
-- `generate_lesson_plan` / `generate_exam` / `evaluate_ppt` 直接在聊天中返回可编辑的 Markdown 内容
+- 上传 PDF / Word / Markdown / PPT 文档后，可先抽取与总结内容，再进入 PPT 生成链路
 
 ## 架构
 
@@ -20,8 +20,7 @@ DirectionAI-Agent/
 │       ├── document-processor-markdown/
 │       ├── document-processor-pptx/
 │       ├── document-summarizer/
-│       ├── lesson-plan-generation/
-│       └── exam-generation/
+│       └── ppt-generation/
 ├── docker-compose.yaml  # Docker 编排配置
 ├── config.yaml          # DeerFlow 主配置
 └── .env                 # 环境变量
@@ -111,16 +110,12 @@ PPT 生成链路已经内置在当前仓库的 `gateway` 服务中。
   - `skills/public/document-processor-pptx/SKILL.md`
   - `skills/public/document-summarizer/SKILL.md`
 - **SSE 路由**: `/pptagentapi/stream_ppt`
+- **任务化流式路由**: `/pptagentapi/stream_ppt/{task_id}`
 - **前端页面**: `/workspace/ppt`
 - **流式体验**: ThinkingProcess 组件实时显示生成进度
+- **文件命名**: 同主题重复生成也会使用唯一文件名，避免覆盖历史产物
 
 历史遗留的 `backend/packages/harness/deerflow/tools/generate_ppt.py` 已移除，避免出现双入口实现和文档漂移。
-
-### 其他教育工具
-
-- **教案生成**: `generate_lesson_plan` 直接返回结构化教案 Markdown，可继续让 Agent 细化
-- **试题生成**: `generate_exam` 直接返回带答案与评分建议的试题 Markdown
-- **PPT 评估**: `evaluate_ppt` 直接返回分维度评分、原因与优化建议；若评估模型不可用，会退回启发式自查结果
 
 当用户上传 PDF / Word / Markdown / PPT 文档并要求生成 PPT 时，可以组合使用上述文档处理 skill：
 先提取文档文本与表格，再生成结构化摘要，最后把摘要喂给 PPT 规划与逐页生成流程。
@@ -130,7 +125,7 @@ PPT 生成链路已经内置在当前仓库的 `gateway` 服务中。
 - Lead Agent 会优先读取转换后的 Markdown，而不是直接读取 PDF / DOCX / PPTX 二进制文件；如果用户上传的本身就是 `.md`，则直接读取该文件
 - 只有当用户明确要求“根据上传文档生成 PPT”时，Agent 才会强制参考 `document-processor-pdf` / `document-processor-docx` / `document-processor-markdown` / `document-processor-pptx` / `document-summarizer` 完成文档抽取与结构化
 - 在这条文档到 PPT 的链路里，主 agent 只负责提炼文档主题、章节和关键事实，不负责提前拍板最终每一页内容；真正的分页规划交给 `generate_ppt`
-- 最终通过 `generate_ppt(content=...)` 把文档摘要、章节结构、关键事实和页数约束传给 PPT 生成器；这些内容现在会真正透传到流式 `/stream_ppt` 请求
+- 最终通过 `generate_ppt(content=...)` 把文档摘要、章节结构、关键事实和页数约束写入任务载荷，再由流式 PPT 路由读取并执行，避免长文本因 URL 长度受限而被截断
 - 如果用户后续基于已生成的 PPT、Markdown 或其他 artifact 继续提问，系统默认把这些产物当作会话上下文来读取，而不是自动再次生成文件
 - 只有当用户明确要求“重新生成 PPT”“修改 PPT”“导出成新文件”等操作时，才会把已有 artifact 当作新的生成目标
 

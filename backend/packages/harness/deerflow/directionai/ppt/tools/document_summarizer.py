@@ -12,6 +12,8 @@ from typing import Any, Callable
 from openai import OpenAI
 from pydantic import BaseModel, Field, field_validator
 
+from deerflow.utils.document_extraction import extract_document_content as shared_extract_document_content
+
 from .. import config as ppt_config
 from .openai_compat import build_chat_completion_kwargs, stream_chat_completion_text
 
@@ -297,16 +299,7 @@ def extract_text_from_pptx(file_path: str) -> tuple[str, list[list[list[str]]], 
 
 
 def extract_document_content(file_path: str) -> tuple[str, list[list[list[str]]], int]:
-    suffix = Path(file_path).suffix.lower()
-    if suffix == ".pdf":
-        return extract_text_from_pdf(file_path)
-    if suffix in {".doc", ".docx"}:
-        return extract_text_from_docx(file_path)
-    if suffix == ".md":
-        return extract_text_from_markdown(file_path)
-    if suffix in {".ppt", ".pptx"}:
-        return extract_text_from_pptx(file_path)
-    raise ValueError(f"Unsupported file format: {suffix}")
+    return shared_extract_document_content(file_path)
 
 
 def _load_skill() -> str:

@@ -81,6 +81,10 @@ def _repair_common_js_syntax_errors(code: str, stderr: str) -> str:
     if repaired != code:
         return repaired
 
+    repaired = _repair_missing_object_property_comma(code, stderr)
+    if repaired != code:
+        return repaired
+
     repaired = code
     patterns = [
         # 例如：text: "内容\", options: ...
@@ -222,6 +226,61 @@ def _repair_quote_near_syntax_error(code: str, stderr: str) -> str:
         return "".join(lines)
 
     return code
+
+
+def _repair_missing_object_property_comma(code: str, stderr: str) -> str:
+    """
+    修复多行对象字面量中遗漏逗号导致的：
+
+      fill: { color: "FFFFFF" }
+      shadow: { ... }
+
+    这类 `Unexpected identifier 'shadow'` 错误。
+    """
+    location = _extract_syntax_error_location(stderr)
+    if not location:
+        return code
+
+    line_no, _caret_col = location
+    lines = code.splitlines(keepends=True)
+    if line_no < 1 or line_no > len(lines):
+        return code
+
+    current_index = line_no - 1
+    current_line = lines[current_index]
+    current_body = current_line.rstrip("\r\n")
+
+    property_match = re.match(r"^(\s*)([A-Za-z_$][\w$]*)\s*:", current_body)
+    if not property_match:
+        return code
+
+    prev_index = _find_previous_nonempty_line(lines, current_index)
+    if prev_index is None:
+        return code
+
+    prev_body = lines[prev_index].rstrip("\r\n")
+    stripped_prev = prev_body.strip()
+    if not stripped_prev:
+        return code
+
+    if stripped_prev.endswith((",", "{", "[", "(", ":")):
+        return code
+
+    # 常见合法结束，直接补逗号即可。
+    if re.search(r'[\]})"\']\s*$', stripped_prev) or re.search(r"\b(?:true|false|null|\d+(?:\.\d+)?)\s*$", stripped_prev):
+        suffix = lines[prev_index][len(prev_body):]
+        lines[prev_index] = prev_body + "," + suffix
+        return "".join(lines)
+
+    return code
+
+
+def _find_previous_nonempty_line(lines: list[str], start_index: int) -> int | None:
+    """返回 start_index 之前最近的非空行索引。"""
+    for idx in range(start_index - 1, -1, -1):
+        if lines[idx].strip():
+            return idx
+    return None
 
 
 def _extract_syntax_error_location(stderr: str) -> tuple[int, int] | None:

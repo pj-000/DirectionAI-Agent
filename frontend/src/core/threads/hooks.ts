@@ -84,12 +84,12 @@ export function useThreadStream({
 
   useEffect(() => {
     const normalizedThreadId = threadId ?? null;
-    if (!normalizedThreadId) {
-      // Just reset for new thread creation when threadId becomes null/undefined
-      startedRef.current = false;
-      setOnStreamThreadId(normalizedThreadId);
-    }
+    startedRef.current = false;
+    setOnStreamThreadId(normalizedThreadId);
     threadIdRef.current = normalizedThreadId;
+    setOptimisticMessages([]);
+    setIsUploading(false);
+    prevMsgCountRef.current = 0;
   }, [threadId]);
 
   const _handleOnStart = useCallback((id: string) => {

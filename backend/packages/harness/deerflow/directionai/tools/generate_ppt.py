@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import uuid
+from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
+from deerflow.directionai.runtime_paths import get_directionai_data_dir
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+_PPT_TASK_ROOT = (get_directionai_data_dir() / "ppt_tasks").resolve()
+_PPT_TASK_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 class GeneratePPTToolInput(BaseModel):
@@ -19,8 +27,8 @@ class GeneratePPTToolInput(BaseModel):
     output_language: str = Field(default="中文", description="PPT 内容语言，例如：'中文'、'英文'。")
     target_audience: str = Field(default="通用受众", description="目标受众，例如：'大学生'、'企业老板'、'技术团队'、'通用受众'。")
     style: str = Field(default="", description="视觉风格偏好，留空则自动决定。可选：'商务'、'学术'、'简约'、'科技感'等。")
-    min_slides: int = Field(default=6, ge=2, le=20, description="最少幻灯片页数，范围 2-20。")
-    max_slides: int = Field(default=10, ge=2, le=20, description="最多幻灯片页数，范围 2-20。")
+    min_slides: int = Field(default=6, ge=4, le=20, description="最少幻灯片页数，范围 4-20。")
+    max_slides: int = Field(default=10, ge=4, le=20, description="最多幻灯片页数，范围 4-20。")
     model_provider: Literal["minmax", "claude"] = Field(default="minmax", description="使用的模型：'minmax'（MiniMax M2.7）或 'claude'（Claude Sonnet）。")
     image_mode: Literal["generate", "search", "auto", "off"] = Field(default="generate", description="图片模式：'generate'（AI生图）、'search'（仅搜图）、'auto'（先搜后生）、'off'（无图）。")
     enable_web_search: bool = Field(default=False, description="是否联网搜索补充资料。")
@@ -42,12 +50,10 @@ def _generate_ppt_func(
     enable_web_search: bool = False,
     content: str = "",
 ) -> str:
-    import json as _json
-
     topic = topic.strip()
     content = content.strip()
-    min_slides = max(2, min(20, min_slides))
-    max_slides = max(2, min(20, max_slides))
+    min_slides = max(4, min(20, min_slides))
+    max_slides = max(4, min(20, max_slides))
     if max_slides < min_slides:
         min_slides, max_slides = max_slides, min_slides
 
@@ -56,6 +62,7 @@ def _generate_ppt_func(
     if len(content) > 6000:
         content = content[:6000].rstrip() + "\n\n[文档摘要因流式传输长度限制被截断]"
 
+    task_id = f"ppttask_{uuid.uuid4().hex}"
     ppt_params = {
         "topic": topic,
         "min_slides": min_slides,
@@ -68,19 +75,30 @@ def _generate_ppt_func(
         "style": style,
         "content": content,
     }
+    (_PPT_TASK_ROOT / f"{task_id}.json").write_text(
+        json.dumps(ppt_params, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     model_label = "MiniMax M2.7" if model_provider == "minmax" else "Claude Sonnet"
+    task_page_url = (
+        f"/workspace/ppt?task_id={task_id}"
+        f"&topic={quote(topic)}"
+        f"&min_slides={min_slides}"
+        f"&max_slides={max_slides}"
+    )
 
     # Return marker + placeholder. Frontend SSE streaming renders the live timeline.
     # When SSE "done" arrives, PPTStreamingInline replaces the placeholder with download link.
     return (
-        f"__PPTGEN_START__{_json.dumps(ppt_params, ensure_ascii=False)}__PPTGEN_END__\n\n"
+        f"__PPTGEN_START__{json.dumps({'task_id': task_id}, ensure_ascii=False)}__PPTGEN_END__\n\n"
         f"✅ PPT 生成任务已启动！\n\n"
         f"**主题**: {topic}\n"
         f"**页数**: {min_slides}-{max_slides} 页\n"
         f"**语言**: {output_language}\n"
         f"**受众**: {target_audience}\n"
         f"**模型**: {model_label}\n\n"
+        f"**任务页面**: {task_page_url}\n\n"
         f"📊 正在生成中，下方将实时展示进度...\n\n"
         f"生成过程：规划大纲 → 确定视觉主题 → 逐页生成 → 质量评估。"
     )

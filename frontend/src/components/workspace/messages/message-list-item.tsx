@@ -33,9 +33,11 @@ import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import { humanMessagePlugins } from "@/core/streamdown";
 import { cn } from "@/lib/utils";
 import { getFileExtensionDisplayName, getFileName } from "@/core/utils/files";
+import { clearActiveChatPPTTask } from "@/components/workspace/ppt/chat-ppt-task-session";
 
 import { CopyButton } from "../copy-button";
 
+import { useThread } from "./context";
 import { MarkdownContent } from "./markdown-content";
 import { PPTStreamingInline } from "./ppt-streaming-inline";
 
@@ -43,10 +45,12 @@ export function MessageListItem({
   className,
   message,
   isLoading,
+  enablePPTStreaming = false,
 }: {
   className?: string;
   message: Message;
   isLoading?: boolean;
+  enablePPTStreaming?: boolean;
 }) {
   const isHuman = message.type === "human";
   return (
@@ -58,6 +62,7 @@ export function MessageListItem({
         className={isHuman ? "w-fit" : "w-full"}
         message={message}
         isLoading={isLoading}
+        enablePPTStreaming={enablePPTStreaming}
       />
       {!isLoading && (
         <MessageToolbar
@@ -115,14 +120,17 @@ function MessageContent_({
   className,
   message,
   isLoading = false,
+  enablePPTStreaming = false,
 }: {
   className?: string;
   message: Message;
   isLoading?: boolean;
+  enablePPTStreaming?: boolean;
 }) {
   const rehypePlugins = useRehypeSplitWordsIntoSpans(isLoading);
   const isHuman = message.type === "human";
   const { thread_id } = useParams<{ thread_id: string }>();
+  const { activePPTTaskId, setActivePPTTaskId } = useThread();
   const components = useMemo(
     () => ({
       img: (props: ImgHTMLAttributes<HTMLImageElement>) => (
@@ -233,12 +241,14 @@ function MessageContent_({
     ? /__PPTGEN_START__(.+?)__PPTGEN_END__/s.exec(rawContent)
     : null;
   if (pptgenMatch?.[1]) {
-    let pptParams: Record<string, string | number | boolean> = {};
+    let pptPayload: Record<string, string | number | boolean> = {};
     try {
-      pptParams = JSON.parse(pptgenMatch[1]);
+      pptPayload = JSON.parse(pptgenMatch[1]);
     } catch {
       // ignore parse errors
     }
+    const taskId =
+      typeof pptPayload.task_id === "string" ? pptPayload.task_id : undefined;
     // Strip the marker block from displayed content, keep the rest
     const afterMarker = rawContent
       .replace(/__PPTGEN_START__.+?__PPTGEN_END__\n\n/s, "")
@@ -246,9 +256,23 @@ function MessageContent_({
     return (
       <AIElementMessageContent className={className}>
         {filesList}
-        {Object.keys(pptParams).length > 0 && (
+        {(taskId || Object.keys(pptPayload).length > 0) && (
           <div className="my-3">
-            <PPTStreamingInline params={pptParams} />
+            <PPTStreamingInline
+              taskId={taskId}
+              params={taskId ? undefined : pptPayload}
+              enabled={
+                enablePPTStreaming &&
+                (!taskId || taskId === activePPTTaskId)
+              }
+              onTerminal={() => {
+                if (!taskId || taskId !== activePPTTaskId) {
+                  return;
+                }
+                setActivePPTTaskId?.(null);
+                clearActiveChatPPTTask(thread_id, taskId);
+              }}
+            />
           </div>
         )}
         {afterMarker && (

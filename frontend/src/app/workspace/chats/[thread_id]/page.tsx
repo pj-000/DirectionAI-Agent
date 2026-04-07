@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -13,6 +14,15 @@ import { ExportTrigger } from "@/components/workspace/export-trigger";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import {
+  clearAwaitingChatPPTTask,
+  extractPPTTaskIdFromPayload,
+  extractLatestPPTTaskIdFromMessages,
+  markAwaitingChatPPTTask,
+  readActiveChatPPTTask,
+  readAwaitingChatPPTTask,
+  writeActiveChatPPTTask,
+} from "@/components/workspace/ppt/chat-ppt-task-session";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -26,13 +36,46 @@ import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
 export default function ChatPage() {
-  const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
-
   const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
   useSpecificChatMode();
 
+  return (
+    <ThreadChatRuntime
+      key={threadId}
+      threadId={threadId}
+      isNewThread={isNewThread}
+      setIsNewThread={setIsNewThread}
+      isMock={isMock}
+      settings={settings}
+      setSettings={setSettings}
+    />
+  );
+}
+
+function ThreadChatRuntime({
+  threadId,
+  isNewThread,
+  setIsNewThread,
+  isMock,
+  settings,
+  setSettings,
+}: {
+  threadId: string;
+  isNewThread: boolean;
+  setIsNewThread: Dispatch<SetStateAction<boolean>>;
+  isMock: boolean;
+  settings: ReturnType<typeof useLocalSettings>[0];
+  setSettings: ReturnType<typeof useLocalSettings>[1];
+}) {
+  const { t } = useI18n();
   const { showNotification } = useNotification();
+  const [activePPTTaskId, setActivePPTTaskId] = useState<string | null>(() =>
+    readActiveChatPPTTask(threadId),
+  );
+  const [awaitingPPTTaskId, setAwaitingPPTTaskId] = useState(() =>
+    readAwaitingChatPPTTask(threadId),
+  );
 
   const [thread, sendMessage, isUploading] = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
@@ -59,10 +102,39 @@ export default function ChatPage() {
         showNotification(state.title, { body });
       }
     },
+    onToolEnd: ({ name, data }) => {
+      if (name !== "generate_ppt") {
+        return;
+      }
+      const taskId = extractPPTTaskIdFromPayload(data);
+      if (!taskId) {
+        return;
+      }
+      setActivePPTTaskId(taskId);
+      writeActiveChatPPTTask(threadId, taskId);
+      setAwaitingPPTTaskId(false);
+      clearAwaitingChatPPTTask(threadId);
+    },
   });
+
+  useEffect(() => {
+    if (!awaitingPPTTaskId || activePPTTaskId) {
+      return;
+    }
+    const taskId = extractLatestPPTTaskIdFromMessages(thread.messages);
+    if (!taskId) {
+      return;
+    }
+    setActivePPTTaskId(taskId);
+    writeActiveChatPPTTask(threadId, taskId);
+    setAwaitingPPTTaskId(false);
+    clearAwaitingChatPPTTask(threadId);
+  }, [activePPTTaskId, awaitingPPTTaskId, thread.messages, threadId]);
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
+      setAwaitingPPTTaskId(true);
+      markAwaitingChatPPTTask(threadId);
       void sendMessage(threadId, message);
     },
     [sendMessage, threadId],
@@ -72,7 +144,9 @@ export default function ChatPage() {
   }, [thread]);
 
   return (
-    <ThreadContext.Provider value={{ thread, isMock }}>
+    <ThreadContext.Provider
+      value={{ thread, isMock, activePPTTaskId, setActivePPTTaskId }}
+    >
       <ChatBox threadId={threadId}>
         <div className="relative flex size-full min-h-0 justify-between">
           <header

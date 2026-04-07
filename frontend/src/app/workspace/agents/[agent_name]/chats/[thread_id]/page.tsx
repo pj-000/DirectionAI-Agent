@@ -1,5 +1,7 @@
 "use client";
 
+import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useState } from "react";
 import { BotIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback } from "react";
@@ -13,6 +15,15 @@ import { ExportTrigger } from "@/components/workspace/export-trigger";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import {
+  clearAwaitingChatPPTTask,
+  extractPPTTaskIdFromPayload,
+  extractLatestPPTTaskIdFromMessages,
+  markAwaitingChatPPTTask,
+  readActiveChatPPTTask,
+  readAwaitingChatPPTTask,
+  writeActiveChatPPTTask,
+} from "@/components/workspace/ppt/chat-ppt-task-session";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -27,7 +38,6 @@ import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
 export default function AgentChatPage() {
-  const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
   const router = useRouter();
 
@@ -39,17 +49,62 @@ export default function AgentChatPage() {
 
   const { threadId, isNewThread, setIsNewThread } = useThreadChat();
 
+  return (
+    <AgentChatRuntime
+      key={`${agent_name}:${threadId}`}
+      agentName={agent_name}
+      agentDisplayName={agent?.name ?? agent_name}
+      threadId={threadId}
+      isNewThread={isNewThread}
+      setIsNewThread={setIsNewThread}
+      settings={settings}
+      setSettings={setSettings}
+      onCreateNewChat={() => {
+        router.push(`/workspace/agents/${agent_name}/chats/new`);
+      }}
+    />
+  );
+}
+
+function AgentChatRuntime({
+  agentName,
+  agentDisplayName,
+  threadId,
+  isNewThread,
+  setIsNewThread,
+  settings,
+  setSettings,
+  onCreateNewChat,
+}: {
+  agentName: string;
+  agentDisplayName: string;
+  threadId: string;
+  isNewThread: boolean;
+  setIsNewThread: Dispatch<SetStateAction<boolean>>;
+  settings: ReturnType<typeof useLocalSettings>[0];
+  setSettings: ReturnType<typeof useLocalSettings>[1];
+  onCreateNewChat: () => void;
+}) {
+  const { t } = useI18n();
+  const { agent } = useAgent(agentName);
   const { showNotification } = useNotification();
+  const [activePPTTaskId, setActivePPTTaskId] = useState<string | null>(() =>
+    readActiveChatPPTTask(threadId),
+  );
+  const [awaitingPPTTaskId, setAwaitingPPTTaskId] = useState(() =>
+    readAwaitingChatPPTTask(threadId),
+  );
+
   const [thread, sendMessage] = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
-    context: { ...settings.context, agent_name: agent_name },
+    context: { ...settings.context, agent_name: agentName },
     onStart: () => {
       setIsNewThread(false);
       // ! Important: Never use next.js router for navigation in this case, otherwise it will cause the thread to re-mount and lose all states. Use native history API instead.
       history.replaceState(
         null,
         "",
-        `/workspace/agents/${agent_name}/chats/${threadId}`,
+        `/workspace/agents/${agentName}/chats/${threadId}`,
       );
     },
     onFinish: (state) => {
@@ -68,13 +123,42 @@ export default function AgentChatPage() {
         showNotification(state.title, { body });
       }
     },
+    onToolEnd: ({ name, data }) => {
+      if (name !== "generate_ppt") {
+        return;
+      }
+      const taskId = extractPPTTaskIdFromPayload(data);
+      if (!taskId) {
+        return;
+      }
+      setActivePPTTaskId(taskId);
+      writeActiveChatPPTTask(threadId, taskId);
+      setAwaitingPPTTaskId(false);
+      clearAwaitingChatPPTTask(threadId);
+    },
   });
+
+  useEffect(() => {
+    if (!awaitingPPTTaskId || activePPTTaskId) {
+      return;
+    }
+    const taskId = extractLatestPPTTaskIdFromMessages(thread.messages);
+    if (!taskId) {
+      return;
+    }
+    setActivePPTTaskId(taskId);
+    writeActiveChatPPTTask(threadId, taskId);
+    setAwaitingPPTTaskId(false);
+    clearAwaitingChatPPTTask(threadId);
+  }, [activePPTTaskId, awaitingPPTTaskId, thread.messages, threadId]);
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
-      void sendMessage(threadId, message, { agent_name });
+      setAwaitingPPTTaskId(true);
+      markAwaitingChatPPTTask(threadId);
+      void sendMessage(threadId, message, { agent_name: agentName });
     },
-    [sendMessage, threadId, agent_name],
+    [sendMessage, threadId, agentName],
   );
 
   const handleStop = useCallback(async () => {
@@ -82,7 +166,9 @@ export default function AgentChatPage() {
   }, [thread]);
 
   return (
-    <ThreadContext.Provider value={{ thread }}>
+    <ThreadContext.Provider
+      value={{ thread, activePPTTaskId, setActivePPTTaskId }}
+    >
       <ChatBox threadId={threadId}>
         <div className="relative flex size-full min-h-0 justify-between">
           <header
@@ -93,12 +179,9 @@ export default function AgentChatPage() {
                 : "bg-background/80 shadow-xs backdrop-blur",
             )}
           >
-            {/* Agent badge */}
             <div className="flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1">
               <BotIcon className="text-primary h-3.5 w-3.5" />
-              <span className="text-xs font-medium">
-                {agent?.name ?? agent_name}
-              </span>
+              <span className="text-xs font-medium">{agent?.name ?? agentDisplayName}</span>
             </div>
 
             <div className="flex w-full items-center text-sm font-medium">
@@ -109,9 +192,7 @@ export default function AgentChatPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => {
-                    router.push(`/workspace/agents/${agent_name}/chats/new`);
-                  }}
+                  onClick={onCreateNewChat}
                 >
                   <PlusSquare /> {t.agents.newChat}
                 </Button>
@@ -168,7 +249,7 @@ export default function AgentChatPage() {
                   context={settings.context}
                   extraHeader={
                     isNewThread && (
-                      <AgentWelcome agent={agent} agentName={agent_name} />
+                      <AgentWelcome agent={agent} agentName={agentName} />
                     )
                   }
                   disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}

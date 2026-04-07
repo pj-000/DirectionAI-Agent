@@ -1,6 +1,7 @@
 """Middleware to inject uploaded files information into agent context."""
 
 import logging
+import re
 from pathlib import Path
 from typing import NotRequired, override
 
@@ -26,6 +27,8 @@ class UploadsMiddlewareState(AgentState):
     """State schema for uploads middleware."""
 
     uploaded_files: NotRequired[list[dict] | None]
+    referenced_artifacts: NotRequired[list[dict] | None]
+    conversation_artifacts: NotRequired[list[dict] | None]
 
 
 class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
@@ -109,39 +112,93 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                     lines.append(f"  Markdown Path: {file['markdown_path']}")
                     lines.append("  Preferred for reading and summarizing document content before PPT generation.")
                 lines.append("")
+            lines.append("Historical uploads are background context only.")
+            lines.append("Do not assume the current request is about regenerating or transforming these files unless the user explicitly refers to them.")
+            lines.append("")
 
         lines.append("Use the `read_file` tool with the paths shown above.")
         lines.append("If a Markdown Path is available, read that file first because it is the converted text version of the uploaded document.")
+        lines.append("Treat uploaded files as source material by default.")
+        lines.append("Do not regenerate, rewrite, or convert an uploaded file into a new artifact unless the user explicitly asks for a new output file or an update to that artifact.")
+        lines.append("If the user wants a summary, translation, explanation, notes, outline, Q&A, or other text derived from an uploaded file, read the file content and answer directly instead of calling a file-generation tool.")
         lines.append("When the user wants a PPT from uploaded documents, extract or summarize the document first, then pass the distilled structure and facts into `generate_ppt(content=...)`.")
         lines.append("</uploaded_files>")
 
         return "\n".join(lines)
 
+    def _create_referenced_artifacts_message(self, references: list[dict]) -> str:
+        lines = ["<referenced_artifacts>"]
+        lines.append("The following existing artifacts from this conversation were explicitly referenced in this message:")
+        lines.append("")
+        for reference in references:
+            lines.append(f"- {reference['filename']}")
+            lines.append(f"  Path: {reference['path']}")
+            lines.append("")
+        lines.append("Treat these referenced artifacts as existing conversation context / source material, not as newly uploaded files.")
+        lines.append("If the user asks for a summary, notes, translation, explanation, script, Q&A, or other derived text, work from these artifacts directly.")
+        lines.append("If a referenced artifact is a binary office document such as PPTX, DOCX, or PDF, extract its content first using the relevant processor skill or tool before answering.")
+        lines.append("Only create or regenerate a new artifact when the user explicitly asks for a new output file or a revision to an existing artifact.")
+        lines.append("</referenced_artifacts>")
+        return "\n".join(lines)
+
+    def _create_conversation_artifacts_message(self, artifacts: list[dict]) -> str:
+        lines = ["<conversation_artifacts>"]
+        lines.append("The following artifacts were generated earlier in this conversation and are available as background context:")
+        lines.append("")
+        for artifact in artifacts:
+            lines.append(f"- {artifact['filename']}")
+            lines.append(f"  Path: {artifact['path']}")
+        lines.append("")
+        lines.append("Treat these prior conversation artifacts as contextual knowledge by default.")
+        lines.append("If the user asks a follow-up question that is based on prior generated outputs, read the relevant artifact and use it as source material.")
+        lines.append("Do not treat the mere mention of an existing PPT, markdown file, or exported artifact as an instruction to regenerate it.")
+        lines.append("Do NOT regenerate these artifacts unless the user explicitly asks to create a new file, export to another format, or revise the existing artifact.")
+        lines.append("</conversation_artifacts>")
+        return "\n".join(lines)
+
     @staticmethod
     def _is_explicit_ppt_request(content: str) -> bool:
         lowered = content.lower()
-        keywords = (
-            "ppt",
-            "演示文稿",
-            "幻灯片",
-            "课件",
-            "slides",
-            "presentation",
+
+        # If the user explicitly asks for some other output form, prefer that
+        # target over the mere presence of "ppt" as source material.
+        non_ppt_output_patterns = (
+            r"\bmd\b",
+            r"markdown",
+            r"\bpdf\b",
+            r"\bdocx?\b",
+            r"\btxt\b",
+            r"\bhtml?\b",
+            r"\bjson\b",
+            r"\bxlsx?\b",
+            r"\bcsv\b",
+            r"演讲稿",
+            r"讲稿",
+            r"speaker\s*notes?",
+            r"notes?",
+            r"总结",
+            r"摘要",
+            r"翻译",
+            r"讲解",
+            r"问答",
+            r"script",
         )
-        action_keywords = (
-            "生成",
-            "制作",
-            "创建",
-            "做一个",
-            "做一份",
-            "create",
-            "generate",
-            "make",
-            "build",
+        if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in non_ppt_output_patterns):
+            return False
+
+        # Strong signals that the desired output artifact is itself a PPT.
+        strong_patterns = (
+            r"(生成|制作|创建|做(?:一[个份])?|做成|转成)\s*(?:一[个份]\s*)?(ppt|演示文稿|幻灯片|课件)\b",
+            r"\b(ppt|演示文稿|幻灯片|课件)\s*(生成|制作|创建)\b",
+            r"(修改|更新|重做|重生成|优化|调整|补充|完善|改写)\s*[^。；，,\n]{0,20}(ppt|演示文稿|幻灯片|课件)\b",
+            r"\b(ppt|演示文稿|幻灯片|课件)\b[^。；，,\n]{0,20}(修改|更新|重做|重生成|优化|调整|补充|完善|改写)\b",
+            r"(导出|输出|保存)\s*(?:为|成)?\s*(ppt|演示文稿|幻灯片|课件)\b",
+            r"\b(create|generate|make|build)\s+(?:a\s+new\s+)?(ppt|slides|presentation)\b",
+            r"\b(revise|update|modify|regenerate)\b.{0,20}\b(ppt|slides|presentation)\b",
+            r"\b(ppt|slides|presentation)\b.{0,20}\b(revise|update|modify|regenerate)\b",
+            r"\b(ppt|slides|presentation)\s+(?:creation|generation|update|revision)\b",
         )
-        return any(keyword in lowered for keyword in keywords) and any(
-            keyword in lowered for keyword in action_keywords
-        )
+        return any(re.search(pattern, lowered, re.IGNORECASE) for pattern in strong_patterns)
 
     def _append_skill_workflow(
         self,
@@ -150,14 +207,25 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         *,
         explicit_ppt_request: bool,
     ) -> str:
+        lowered_extensions = {str(file.get("extension") or "").lower() for file in all_files}
+        needs_ppt_workflow = bool({".ppt", ".pptx"} & lowered_extensions)
+
+        if needs_ppt_workflow and not explicit_ppt_request:
+            followup_lines = [
+                "",
+                "Important intent rule for existing PowerPoint files:",
+                "- The presence of an uploaded `.ppt`/`.pptx` file does NOT by itself mean you should call `generate_ppt`.",
+                "- If the user asks to summarize, explain, translate, extract, compare, write speaker notes, or write a speech/script based on the existing deck, treat the PowerPoint as source material to read and analyze.",
+                "- Only call `generate_ppt` when the user explicitly asks to create a new deck, regenerate slides, revise slide content/layout, or otherwise produce/update PPT output.",
+            ]
+            files_message = files_message.replace("</uploaded_files>", "\n".join(followup_lines) + "\n</uploaded_files>")
+
         if not explicit_ppt_request:
             return files_message
 
-        lowered_extensions = {str(file.get("extension") or "").lower() for file in all_files}
         needs_pdf_workflow = ".pdf" in lowered_extensions
         needs_docx_workflow = bool({".doc", ".docx"} & lowered_extensions)
         needs_markdown_workflow = ".md" in lowered_extensions
-        needs_ppt_workflow = bool({".ppt", ".pptx"} & lowered_extensions)
         needs_document_workflow = (
             needs_pdf_workflow
             or needs_docx_workflow
@@ -241,6 +309,65 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
             )
         return files if files else None
 
+    def _artifact_references_from_kwargs(
+        self,
+        message: HumanMessage,
+        outputs_dir: Path | None = None,
+    ) -> list[dict] | None:
+        kwargs_refs = (message.additional_kwargs or {}).get("artifact_references")
+        if not isinstance(kwargs_refs, list) or not kwargs_refs:
+            return None
+
+        references = []
+        for ref in kwargs_refs:
+            if isinstance(ref, str):
+                virtual_path = ref
+            elif isinstance(ref, dict):
+                virtual_path = ref.get("path")
+            else:
+                continue
+
+            if not isinstance(virtual_path, str) or not virtual_path.startswith("/mnt/user-data/outputs/"):
+                continue
+
+            filename = Path(virtual_path).name
+            if not filename:
+                continue
+
+            if outputs_dir is not None and not (outputs_dir / filename).is_file():
+                continue
+
+            references.append(
+                {
+                    "filename": filename,
+                    "path": virtual_path,
+                    "extension": Path(filename).suffix,
+                }
+            )
+
+        return references if references else None
+
+    def _conversation_artifacts_from_dir(
+        self,
+        outputs_dir: Path | None = None,
+    ) -> list[dict]:
+        if outputs_dir is None or not outputs_dir.exists():
+            return []
+
+        artifacts: list[dict] = []
+        for file_path in sorted(outputs_dir.iterdir()):
+            if not file_path.is_file() or file_path.name.startswith("."):
+                continue
+            artifacts.append(
+                {
+                    "filename": file_path.name,
+                    "path": f"/mnt/user-data/outputs/{file_path.name}",
+                    "extension": file_path.suffix,
+                    "size": file_path.stat().st_size,
+                }
+            )
+        return artifacts
+
     @override
     def before_agent(self, state: UploadsMiddlewareState, runtime: Runtime) -> dict | None:
         """Inject uploaded files information before agent execution.
@@ -273,9 +400,12 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         # Resolve uploads directory for existence checks
         thread_id = (runtime.context or {}).get("thread_id")
         uploads_dir = self._paths.sandbox_uploads_dir(thread_id) if thread_id else None
+        outputs_dir = self._paths.sandbox_outputs_dir(thread_id) if thread_id else None
 
         # Get newly uploaded files from the current message's additional_kwargs.files
         new_files = self._files_from_kwargs(last_message, uploads_dir) or []
+        referenced_artifacts = self._artifact_references_from_kwargs(last_message, outputs_dir) or []
+        conversation_artifacts = self._conversation_artifacts_from_dir(outputs_dir)
 
         # Collect historical files from the uploads directory (all except the new ones)
         new_filenames = {f["filename"] for f in new_files}
@@ -302,7 +432,7 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                     }
                 )
 
-        if not new_files and not historical_files:
+        if not new_files and not historical_files and not referenced_artifacts and not conversation_artifacts:
             return None
 
         logger.debug(f"New files: {[f['filename'] for f in new_files]}, historical: {[f['filename'] for f in historical_files]}")
@@ -318,19 +448,39 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                     text_parts.append(block.get("text", ""))
             original_content = "\n".join(text_parts)
 
-        # Create files message and prepend to the last human message content
-        files_message = self._create_files_message(new_files, historical_files)
-        files_message = self._append_skill_workflow(
-            files_message,
-            [*new_files, *historical_files],
-            explicit_ppt_request=self._is_explicit_ppt_request(original_content),
-        )
+        explicit_ppt_request = self._is_explicit_ppt_request(original_content)
+        context_blocks: list[str] = []
+
+        if referenced_artifacts:
+            context_blocks.append(self._create_referenced_artifacts_message(referenced_artifacts))
+
+        if conversation_artifacts:
+            non_referenced_conversation_artifacts = [
+                artifact
+                for artifact in conversation_artifacts
+                if artifact["path"] not in {ref["path"] for ref in referenced_artifacts}
+            ]
+            if non_referenced_conversation_artifacts:
+                context_blocks.append(
+                    self._create_conversation_artifacts_message(
+                        non_referenced_conversation_artifacts
+                    )
+                )
+
+        if new_files or historical_files:
+            files_message = self._create_files_message(new_files, historical_files)
+            files_message = self._append_skill_workflow(
+                files_message,
+                new_files,
+                explicit_ppt_request=explicit_ppt_request,
+            )
+            context_blocks.append(files_message)
 
         # Create new message with combined content.
         # Preserve additional_kwargs (including files metadata) so the frontend
         # can read structured file info from the streamed message.
         updated_message = HumanMessage(
-            content=f"{files_message}\n\n{original_content}",
+            content=f"{'\n\n'.join(context_blocks)}\n\n{original_content}",
             id=last_message.id,
             additional_kwargs=last_message.additional_kwargs,
         )
@@ -339,5 +489,7 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
 
         return {
             "uploaded_files": new_files,
+            "referenced_artifacts": referenced_artifacts,
+            "conversation_artifacts": conversation_artifacts,
             "messages": messages,
         }

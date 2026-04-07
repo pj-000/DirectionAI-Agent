@@ -228,6 +228,7 @@ Proxied through nginx: `/api/langgraph/*` → LangGraph, all other `/api/*` → 
 - Only when the user explicitly asks to generate a PPT from uploaded documents, `UploadsMiddleware` additionally injects a skill-driven workflow that points the agent to `document-processor-pdf` / `document-processor-docx` / `document-processor-markdown` / `document-processor-pptx` / `document-summarizer` / `ppt-generation`
 - In that explicit document-to-PPT case, Lead Agent should prefer the converted Markdown path when usable, otherwise follow the skill workflow to extract content from the original document and pass the distilled structure into `generate_ppt(content=...)`
 - In that explicit document-to-PPT case, the lead agent should not pre-commit the final per-slide outline; `generate_ppt` owns the actual PPT planning and page allocation
+- If the user uploads or references an existing PPT/PPTX but asks for a summary, speech script, translation, speaker notes, or explanation, treat the deck as source material only and do not call `generate_ppt` unless slide regeneration is explicitly requested
 
 ### Sandbox System (`packages/harness/deerflow/sandbox/`)
 

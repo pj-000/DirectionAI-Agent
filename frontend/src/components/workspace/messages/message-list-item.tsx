@@ -21,15 +21,18 @@ import { Badge } from "@/components/ui/badge";
 import { resolveArtifactURL } from "@/core/artifacts/utils";
 import { useI18n } from "@/core/i18n/hooks";
 import {
+  parseReferencedArtifacts,
   extractContentFromMessage,
   extractReasoningContentFromMessage,
   parseUploadedFiles,
   stripUploadedFilesTag,
+  type ArtifactReferenceInMessage,
   type FileInMessage,
 } from "@/core/messages/utils";
 import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import { humanMessagePlugins } from "@/core/streamdown";
 import { cn } from "@/lib/utils";
+import { getFileExtensionDisplayName, getFileName } from "@/core/utils/files";
 
 import { CopyButton } from "../copy-button";
 
@@ -135,7 +138,7 @@ function MessageContent_({
   const files = useMemo(() => {
     const files = message.additional_kwargs?.files;
     if (!Array.isArray(files) || files.length === 0) {
-      if (rawContent.includes("<uploaded_files>")) {
+      if (!isHuman && rawContent.includes("<uploaded_files>")) {
         // If the content contains the <uploaded_files> tag, we return the parsed files from the content for backward compatibility.
         return parseUploadedFiles(rawContent);
       }
@@ -143,6 +146,19 @@ function MessageContent_({
     }
     return files as FileInMessage[];
   }, [message.additional_kwargs?.files, rawContent]);
+
+  const artifactReferences = useMemo(() => {
+    const references = message.additional_kwargs?.artifact_references;
+    if (Array.isArray(references) && references.length > 0) {
+      return references
+        .filter((path): path is string => typeof path === "string" && path.length > 0)
+        .map((path) => ({ path }));
+    }
+    if (rawContent.includes("<referenced_artifacts>")) {
+      return parseReferencedArtifacts(rawContent);
+    }
+    return null;
+  }, [message.additional_kwargs?.artifact_references, rawContent]);
 
   const contentToDisplay = useMemo(() => {
     if (isHuman) {
@@ -154,6 +170,10 @@ function MessageContent_({
   const filesList =
     files && files.length > 0 && thread_id ? (
       <RichFilesList files={files} threadId={thread_id} />
+    ) : null;
+  const artifactReferencesList =
+    artifactReferences && artifactReferences.length > 0 ? (
+      <ReferencedArtifactsList artifacts={artifactReferences} />
     ) : null;
 
   // Uploading state: mock AI message shown while files upload
@@ -196,6 +216,7 @@ function MessageContent_({
     ) : null;
     return (
       <div className={cn("ml-auto flex flex-col gap-2", className)}>
+        {artifactReferencesList}
         {filesList}
         {messageResponse && (
           <AIElementMessageContent className="w-fit">
@@ -244,6 +265,7 @@ function MessageContent_({
 
   return (
     <AIElementMessageContent className={className}>
+      {artifactReferencesList}
       {filesList}
       <MarkdownContent
         content={contentToDisplay}
@@ -417,6 +439,46 @@ function RichFileCard({
           {formatBytes(file.size)}
         </span>
       </div>
+    </div>
+  );
+}
+
+function ReferencedArtifactsList({
+  artifacts,
+}: {
+  artifacts: ArtifactReferenceInMessage[];
+}) {
+  if (artifacts.length === 0) return null;
+
+  return (
+    <div className="mb-2 flex flex-wrap justify-end gap-2">
+      {artifacts.map((artifact) => (
+        <div
+          key={artifact.path}
+          className="bg-background border-border/40 flex max-w-50 min-w-30 flex-col gap-1 rounded-lg border p-3 shadow-sm"
+        >
+          <div className="flex items-start gap-2">
+            <FileIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+            <span
+              className="text-foreground truncate text-sm font-medium"
+              title={getFileName(artifact.path)}
+            >
+              {getFileName(artifact.path)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Badge
+              variant="secondary"
+              className="rounded px-1.5 py-0.5 text-[10px] font-normal"
+            >
+              {getFileExtensionDisplayName(artifact.path)}
+            </Badge>
+            <span className="text-muted-foreground text-[10px]">
+              引用文件
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

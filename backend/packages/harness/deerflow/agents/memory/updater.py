@@ -212,6 +212,9 @@ _UPLOAD_SENTENCE_RE = re.compile(
     r"|file\s+upload"
     r"|/mnt/user-data/uploads/"
     r"|<uploaded_files>"
+    r"|<referenced_artifacts>"
+    r"|<conversation_artifacts>"
+    r"|/mnt/user-data/outputs/"
     r")[^.!?]*[.!?]?\s*",
     re.IGNORECASE,
 )

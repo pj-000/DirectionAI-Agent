@@ -360,6 +360,10 @@ export interface FileInMessage {
   status?: "uploading" | "uploaded";
 }
 
+export interface ArtifactReferenceInMessage {
+  path: string;
+}
+
 /**
  * Strip <uploaded_files> tag from message content.
  * Returns the content with the tag removed.
@@ -367,7 +371,31 @@ export interface FileInMessage {
 export function stripUploadedFilesTag(content: string): string {
   return content
     .replace(/<uploaded_files>[\s\S]*?<\/uploaded_files>/g, "")
+    .replace(/<referenced_artifacts>[\s\S]*?<\/referenced_artifacts>/g, "")
+    .replace(/<conversation_artifacts>[\s\S]*?<\/conversation_artifacts>/g, "")
     .trim();
+}
+
+export function parseReferencedArtifacts(content: string): ArtifactReferenceInMessage[] {
+  const referencedArtifactsRegex =
+    /<referenced_artifacts>([\s\S]*?)<\/referenced_artifacts>/;
+  const match = content.match(referencedArtifactsRegex);
+
+  if (!match) {
+    return [];
+  }
+
+  const fileRegex = /-\s+[^\n]+\n\s*Path:\s*([^\n]+)/g;
+  const artifacts: ArtifactReferenceInMessage[] = [];
+  let fileMatch;
+
+  while ((fileMatch = fileRegex.exec(match[1] ?? "")) !== null) {
+    artifacts.push({
+      path: fileMatch[1].trim(),
+    });
+  }
+
+  return artifacts;
 }
 
 export function parseUploadedFiles(content: string): FileInMessage[] {

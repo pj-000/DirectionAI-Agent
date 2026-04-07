@@ -1,4 +1,4 @@
-import { DownloadIcon, LoaderIcon, PackageIcon } from "lucide-react";
+import { CheckIcon, DownloadIcon, LoaderIcon, MessageCircleIcon, PackageIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,7 +32,12 @@ export function ArtifactFileList({
   threadId: string;
 }) {
   const { t } = useI18n();
-  const { select: selectArtifact, setOpen } = useArtifacts();
+  const {
+    addReference,
+    referencedArtifacts,
+    select: selectArtifact,
+    setOpen,
+  } = useArtifacts();
   const [installingFile, setInstallingFile] = useState<string | null>(null);
 
   const handleClick = useCallback(
@@ -71,6 +76,15 @@ export function ArtifactFileList({
     [threadId, installingFile],
   );
 
+  const handleReference = useCallback(
+    (e: React.MouseEvent, filepath: string) => {
+      e.stopPropagation();
+      e.preventDefault();
+      addReference(filepath);
+    },
+    [addReference],
+  );
+
   return (
     <ul className={cn("flex w-full flex-col gap-4", className)}>
       {files.map((file) => (
@@ -104,6 +118,18 @@ export function ArtifactFileList({
                   {t.common.install}
                 </Button>
               )}
+              <Button
+                variant="ghost"
+                onClick={(e) => handleReference(e, file)}
+                disabled={referencedArtifacts.includes(file)}
+              >
+                {referencedArtifacts.includes(file) ? (
+                  <CheckIcon className="size-4" />
+                ) : (
+                  <MessageCircleIcon className="size-4" />
+                )}
+                {referencedArtifacts.includes(file) ? "已引用" : "引用到聊天"}
+              </Button>
               <a
                 href={urlOfArtifact({
                   filepath: file,

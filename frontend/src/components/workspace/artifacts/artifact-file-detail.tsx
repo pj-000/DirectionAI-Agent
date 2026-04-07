@@ -1,9 +1,11 @@
 import {
+  CheckIcon,
   Code2Icon,
   CopyIcon,
   DownloadIcon,
   EyeIcon,
   LoaderIcon,
+  MessageCircleIcon,
   PackageIcon,
   SquareArrowOutUpRightIcon,
   XIcon,
@@ -54,7 +56,13 @@ export function ArtifactFileDetail({
   threadId: string;
 }) {
   const { t } = useI18n();
-  const { artifacts, setOpen, select } = useArtifacts();
+  const {
+    addReference,
+    artifacts,
+    referencedArtifacts,
+    setOpen,
+    select,
+  } = useArtifacts();
   const isWriteFile = useMemo(() => {
     return filepathFromProps.startsWith("write-file:");
   }, [filepathFromProps]);
@@ -123,6 +131,9 @@ export function ArtifactFileDetail({
       setIsInstalling(false);
     }
   }, [threadId, filepath, isInstalling]);
+
+  const isReferenced = referencedArtifacts.includes(filepathFromProps);
+
   return (
     <Artifact className={cn(className)}>
       <ArtifactHeader className="px-2">
@@ -186,6 +197,15 @@ export function ArtifactFileDetail({
                   onClick={handleInstallSkill}
                 />
               </Tooltip>
+            )}
+            {!isWriteFile && (
+              <ArtifactAction
+                icon={isReferenced ? CheckIcon : MessageCircleIcon}
+                label={isReferenced ? "已引用到聊天" : "引用到聊天"}
+                tooltip={isReferenced ? "已引用到聊天" : "引用到聊天"}
+                disabled={isReferenced}
+                onClick={() => addReference(filepathFromProps)}
+              />
             )}
             {!isWriteFile && (
               <a href={urlOfArtifact({ filepath, threadId })} target="_blank">

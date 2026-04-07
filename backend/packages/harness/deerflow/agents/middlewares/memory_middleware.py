@@ -27,8 +27,8 @@ def _filter_messages_for_memory(messages: list[Any]) -> list[Any]:
     This filters out:
     - Tool messages (intermediate tool call results)
     - AI messages with tool_calls (intermediate steps, not final responses)
-    - The <uploaded_files> block injected by UploadsMiddleware into human messages
-      (file paths are session-scoped and must not persist in long-term memory).
+    - The <uploaded_files>, <referenced_artifacts>, and <conversation_artifacts> blocks injected into human
+      messages (file paths are session-scoped and must not persist in long-term memory).
       The user's actual question is preserved; only turns whose content is entirely
       the upload block (nothing remains after stripping) are dropped along with
       their paired assistant response.
@@ -44,7 +44,10 @@ def _filter_messages_for_memory(messages: list[Any]) -> list[Any]:
     Returns:
         Filtered list containing only user inputs and final assistant responses.
     """
-    _UPLOAD_BLOCK_RE = re.compile(r"<uploaded_files>[\s\S]*?</uploaded_files>\n*", re.IGNORECASE)
+    _UPLOAD_BLOCK_RE = re.compile(
+        r"(?:<uploaded_files>[\s\S]*?</uploaded_files>\n*|<referenced_artifacts>[\s\S]*?</referenced_artifacts>\n*|<conversation_artifacts>[\s\S]*?</conversation_artifacts>\n*)",
+        re.IGNORECASE,
+    )
 
     filtered = []
     skip_next_ai = False
@@ -56,7 +59,11 @@ def _filter_messages_for_memory(messages: list[Any]) -> list[Any]:
             if isinstance(content, list):
                 content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
             content_str = str(content)
-            if "<uploaded_files>" in content_str:
+            if (
+                "<uploaded_files>" in content_str
+                or "<referenced_artifacts>" in content_str
+                or "<conversation_artifacts>" in content_str
+            ):
                 # Strip the ephemeral upload block; keep the user's real question.
                 stripped = _UPLOAD_BLOCK_RE.sub("", content_str).strip()
                 if not stripped:

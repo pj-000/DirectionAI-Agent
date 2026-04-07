@@ -37,6 +37,7 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
     open: artifactsOpen,
     setOpen: setArtifactsOpen,
     setArtifacts,
+    clearReferences,
     select: selectArtifact,
     deselect,
     selectedArtifact,
@@ -47,6 +48,7 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
     if (threadIdRef.current !== threadId) {
       threadIdRef.current = threadId;
       deselect();
+      clearReferences();
     }
 
     // Update artifacts from the current thread
@@ -72,6 +74,7 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
   }, [
     threadId,
     autoSelectFirstArtifact,
+    clearReferences,
     deselect,
     selectArtifact,
     selectedArtifact,

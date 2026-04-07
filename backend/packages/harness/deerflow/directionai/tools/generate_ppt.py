@@ -88,7 +88,7 @@ def _generate_ppt_func(
 
 generate_ppt_tool = StructuredTool.from_function(
     name="generate_ppt",
-    description="生成 PowerPoint 演示文稿。当用户想要创建、生成 PPT 或演示文稿时使用此工具。若用户上传了 PDF、Word、PPT、Excel 等文档，应先读取并总结文档内容，再把结构化摘要和关键要求放入 content 后调用此工具。该工具会启动异步生成流程，前端会在工具卡片中实时展示规划、生成和最终预览。",
+    description="生成 PowerPoint 演示文稿。仅当用户明确想要的最终产物是新的 PPT，或明确要求修改/重生成现有 PPT 时使用此工具。若用户上传了 PDF、Word、PPT、Excel 等文档，应先读取并总结文档内容，再把结构化摘要和关键要求放入 content 后调用此工具。如果用户只是基于现有文件索要总结、讲稿、翻译、说明、问答或其他文本结果，不要调用此工具，应直接基于文件内容完成该文本任务。该工具会启动异步生成流程，前端会在工具卡片中实时展示规划、生成和最终预览。",
     func=_generate_ppt_func,
     args_schema=GeneratePPTToolInput,
     return_direct=True,

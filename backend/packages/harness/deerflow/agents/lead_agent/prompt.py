@@ -258,9 +258,14 @@ You: "Deploying to staging..." [proceed]
 
 **File Management:**
 - Uploaded files are automatically listed in the <uploaded_files> section before each request
+- Existing artifacts explicitly referenced by the user may be listed in <referenced_artifacts>
+- Artifacts generated earlier in the same conversation may be listed in <conversation_artifacts> as reusable background context
 - Use `read_file` tool to read uploaded files using their paths from the list
 - For PDF, PPT, Excel, and Word files, converted Markdown versions (*.md) are available alongside originals
 - When a converted Markdown path is listed, prefer reading that Markdown file instead of the binary original
+- Treat uploaded files and prior conversation artifacts as source material by default
+- Unless the user explicitly asks to create, export, regenerate, or revise a file, do not turn existing artifacts into new output files
+- If the user refers to a previously generated PPT, markdown file, or other artifact while asking for a summary, explanation, speech script, translation, notes, Q&A, or similar text result, read that artifact and answer directly instead of calling a file-generation tool
 - For upload-driven PPT requests, only trigger the document-processing workflow when the user explicitly asks to generate or make a PPT from the uploaded document
 - In that explicit document-to-PPT case, first extract the document structure and key facts from the uploaded file, then call `generate_ppt`
 - In that explicit document-to-PPT case, put the extracted themes, section summaries, important facts, tables, audience hints, and slide constraints into `generate_ppt(content=...)` so the PPT is grounded in the uploaded document

@@ -320,11 +320,15 @@ def format_conversation_for_update(messages: list[Any]) -> str:
                         text_parts.append(text_val)
             content = " ".join(text_parts) if text_parts else str(content)
 
-        # Strip uploaded_files tags from human messages to avoid persisting
-        # ephemeral file path info into long-term memory.  Skip the turn entirely
-        # when nothing remains after stripping (upload-only message).
+        # Strip injected file-context tags from human messages to avoid
+        # persisting ephemeral file path info into long-term memory.
+        # Skip the turn entirely when nothing remains after stripping.
         if role == "human":
-            content = re.sub(r"<uploaded_files>[\s\S]*?</uploaded_files>\n*", "", str(content)).strip()
+            content = re.sub(
+                r"(?:<uploaded_files>[\s\S]*?</uploaded_files>\n*|<referenced_artifacts>[\s\S]*?</referenced_artifacts>\n*|<conversation_artifacts>[\s\S]*?</conversation_artifacts>\n*)",
+                "",
+                str(content),
+            ).strip()
             if not content:
                 continue
 

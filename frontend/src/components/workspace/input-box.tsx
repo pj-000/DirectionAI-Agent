@@ -41,6 +41,7 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ConfettiButton } from "@/components/ui/confetti-button";
 import {
   Dialog,
@@ -60,6 +61,10 @@ import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import type { AgentThreadContext } from "@/core/threads";
 import { textOfMessage } from "@/core/threads/utils";
+import {
+  getFileExtensionDisplayName,
+  getFileName,
+} from "@/core/utils/files";
 import { cn } from "@/lib/utils";
 
 import {
@@ -80,6 +85,7 @@ import {
 } from "../ui/dropdown-menu";
 
 import { useThread } from "./messages/context";
+import { useArtifacts } from "./artifacts";
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { Tooltip } from "./tooltip";
 
@@ -144,6 +150,13 @@ export function InputBox({
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const { models } = useModels();
   const { thread, isMock } = useThread();
+  const {
+    addReference,
+    clearReferences,
+    referencedArtifacts,
+    removeReference,
+    selectedArtifact,
+  } = useArtifacts();
   const { textInput } = usePromptInputController();
   const promptRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -253,10 +266,22 @@ export function InputBox({
       setFollowups([]);
       setFollowupsHidden(false);
       setFollowupsLoading(false);
-      onSubmit?.(message);
+      const payload =
+        referencedArtifacts.length > 0
+          ? {
+              ...message,
+              artifactReferences: referencedArtifacts,
+            }
+          : message;
+      await onSubmit?.(payload);
+      clearReferences();
     },
-    [onSubmit, onStop, status],
+    [clearReferences, onSubmit, onStop, referencedArtifacts, status],
   );
+
+  useEffect(() => {
+    clearReferences();
+  }, [threadId, clearReferences]);
 
   const requestFormSubmit = useCallback(() => {
     const form = promptRootRef.current?.querySelector("form");
@@ -403,6 +428,42 @@ export function InputBox({
         <PromptInputAttachments>
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>
+        {referencedArtifacts.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2 px-3 pt-3">
+            {referencedArtifacts.map((artifact) => (
+              <div
+                key={artifact}
+                className="bg-background flex max-w-72 items-center gap-2 rounded-lg border px-3 py-2 shadow-sm"
+              >
+                <PaperclipIcon className="text-muted-foreground size-4 shrink-0" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {getFileName(artifact)}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="secondary"
+                      className="rounded px-1.5 py-0.5 text-[10px] font-normal"
+                    >
+                      {getFileExtensionDisplayName(artifact)}
+                    </Badge>
+                    <span className="text-muted-foreground text-[10px]">
+                      引用文件
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="shrink-0"
+                  onClick={() => removeReference(artifact)}
+                >
+                  <XIcon className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
           <PromptInputTextarea
             className={cn("size-full")}
@@ -424,6 +485,27 @@ export function InputBox({
             </PromptInputActionMenuContent>
           </PromptInputActionMenu> */}
             <AddAttachmentsButton className="px-2!" />
+            {selectedArtifact && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1 px-2"
+                onClick={() => addReference(selectedArtifact)}
+                disabled={referencedArtifacts.includes(selectedArtifact)}
+              >
+                {referencedArtifacts.includes(selectedArtifact) ? (
+                  <CheckIcon className="size-3" />
+                ) : (
+                  <PaperclipIcon className="size-3" />
+                )}
+                <span className="text-xs">
+                  {referencedArtifacts.includes(selectedArtifact)
+                    ? "已引用当前文件"
+                    : "引用当前文件"}
+                </span>
+              </Button>
+            )}
             <PromptInputActionMenu>
               <ModeHoverGuide
                 mode={

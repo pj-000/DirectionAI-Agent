@@ -21,6 +21,11 @@ export interface ArtifactsContextType {
   open: boolean;
   autoOpen: boolean;
   setOpen: (open: boolean) => void;
+
+  referencedArtifacts: string[];
+  addReference: (artifact: string) => void;
+  removeReference: (artifact: string) => void;
+  clearReferences: () => void;
 }
 
 const ArtifactsContext = createContext<ArtifactsContextType | undefined>(
@@ -39,6 +44,7 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true",
   );
   const [autoOpen, setAutoOpen] = useState(true);
+  const [referencedArtifacts, setReferencedArtifacts] = useState<string[]>([]);
   const { setOpen: setSidebarOpen } = useSidebar();
 
   const select = useCallback(
@@ -60,6 +66,20 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     setOpen(false);
   }, []);
 
+  const addReference = useCallback((artifact: string) => {
+    setReferencedArtifacts((prev) =>
+      prev.includes(artifact) ? prev : [...prev, artifact],
+    );
+  }, []);
+
+  const removeReference = useCallback((artifact: string) => {
+    setReferencedArtifacts((prev) => prev.filter((item) => item !== artifact));
+  }, []);
+
+  const clearReferences = useCallback(() => {
+    setReferencedArtifacts([]);
+  }, []);
+
   const value: ArtifactsContextType = {
     artifacts,
     setArtifacts,
@@ -78,6 +98,10 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     selectedArtifact,
     select,
     deselect,
+    referencedArtifacts,
+    addReference,
+    removeReference,
+    clearReferences,
   };
 
   return (

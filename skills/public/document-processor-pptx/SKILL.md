@@ -13,7 +13,8 @@ Extract readable text and structured tables from PPTX files so the content can b
 
 - User uploads a `.pptx` file
 - User uploads a legacy `.ppt` file that has already been converted or can be converted to `.pptx`
-- Need to extract presentation content for summarization, analysis, or regeneration
+- User references an existing PPT/PPTX generated earlier in the same conversation
+- Need to extract presentation content for summarization, analysis, regeneration, speaker notes, or scripts
 
 ## Approach
 
@@ -77,6 +78,11 @@ For the upload-to-PPT workflow:
 2. Preserve slide count as a page estimate
 3. Pass the extracted content to `document-summarizer`
 4. Then call `generate_ppt(content=...)`
+
+General follow-up rule for an existing deck:
+- Treat the uploaded PPT as source material first.
+- If the user wants any derived text output, analysis, notes, translation, or explanation, stop after extraction and answer that request directly.
+- Only call `generate_ppt` when the requested final artifact is a PPT and the user explicitly wants a new deck or slide revisions/regeneration.
 
 ## Output Format
 

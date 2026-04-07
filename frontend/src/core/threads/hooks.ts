@@ -229,8 +229,12 @@ export function useThreadStream({
         type: "human",
         id: `opt-human-${Date.now()}`,
         content: text ? [{ type: "text", text }] : "",
-        additional_kwargs:
-          optimisticFiles.length > 0 ? { files: optimisticFiles } : {},
+        additional_kwargs: {
+          ...(optimisticFiles.length > 0 ? { files: optimisticFiles } : {}),
+          ...(message.artifactReferences?.length
+            ? { artifact_references: message.artifactReferences }
+            : {}),
+        },
       };
 
       const newOptimistic: Message[] = [optimisticHumanMsg];
@@ -362,7 +366,16 @@ export function useThreadStream({
                   },
                 ],
                 additional_kwargs:
-                  filesForSubmit.length > 0 ? { files: filesForSubmit } : {},
+                  {
+                    ...(filesForSubmit.length > 0
+                      ? { files: filesForSubmit }
+                      : {}),
+                    ...(message.artifactReferences?.length
+                      ? {
+                          artifact_references: message.artifactReferences,
+                        }
+                      : {}),
+                  },
               },
             ],
           },

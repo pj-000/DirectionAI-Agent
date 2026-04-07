@@ -83,6 +83,12 @@ make dev        # Start all services (LangGraph + Gateway + Frontend + Nginx), w
 make stop       # Stop all services
 ```
 
+## DirectionAI PPT Tool Entry
+
+- Active entrypoint: `packages/harness/deerflow/directionai/tools/generate_ppt.py`
+- Config reference: keep `config.yaml` pointing to `deerflow.directionai.tools:generate_ppt_tool`
+- Legacy duplicate removed: do not recreate `packages/harness/deerflow/tools/generate_ppt.py`
+
 **Backend directory** (for backend development only):
 ```bash
 make install    # Install backend dependencies

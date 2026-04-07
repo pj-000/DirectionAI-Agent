@@ -101,6 +101,8 @@ PPT 生成链路已经内置在当前仓库的 `gateway` 服务中。
 ### PPT 生成
 
 - **Tool**: `generate_ppt` (DeerFlow Tool)
+- **唯一实现入口**: `backend/packages/harness/deerflow/directionai/tools/generate_ppt.py`
+- **配置引用**: `config.yaml` 中保持 `deerflow.directionai.tools:generate_ppt_tool`
 - **Skill**: `skills/public/ppt-generation/SKILL.md`
 - **文档处理 Skills**:
   - `skills/public/document-processor-pdf/SKILL.md`
@@ -111,6 +113,8 @@ PPT 生成链路已经内置在当前仓库的 `gateway` 服务中。
 - **SSE 路由**: `/pptagentapi/stream_ppt`
 - **前端页面**: `/workspace/ppt`
 - **流式体验**: ThinkingProcess 组件实时显示生成进度
+
+历史遗留的 `backend/packages/harness/deerflow/tools/generate_ppt.py` 已移除，避免出现双入口实现和文档漂移。
 
 ### 其他教育工具
 
